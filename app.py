@@ -11,9 +11,9 @@ import time
 try:
     ACCESS_TOKEN = st.secrets["mercado_pago"]["access_token"]
     SUPABASE_URL = st.secrets["supabase"]["url"]
-    SUPABASE_KEY = st.secrets["supabase"]["key"] # Chave Anon (Pública)
+    SUPABASE_KEY = st.secrets["supabase"]["key"]
 except Exception as e:
-    st.error("Erro: Verifique os Secrets no painel do Streamlit Cloud.")
+    st.error("Erro: Verifique os Secrets no painel do Streamlit Cloud (ACCESS_TOKEN, SUPABASE_URL, SUPABASE_KEY).")
     st.stop()
 
 SDK = mercadopago.SDK(ACCESS_TOKEN)
@@ -65,10 +65,14 @@ def get_all_data():
 st.set_page_config(page_title="Leads Intelligence B2B", layout="wide", page_icon="📈")
 df_raw = get_all_data()
 
-st.title("🚀 Hub de Inteligência B2B")
-st.caption("Filtre leads qualificados e adquira a base instantaneamente.")
+if df_raw.empty:
+    st.info("Sincronizando base de dados...")
+    st.stop()
 
-# Painel de Filtros 
+st.title("🚀 Hub de Inteligência B2B")
+st.caption("Filtre leads qualificados e adquira a base instantaneamente via PIX.")
+
+# --- PAINEL DE FILTROS ---
 with st.container(border=True):
     c1, c2, c3 = st.columns([2, 2, 1])
     with c1: busca_nome = st.text_input("Empresa", placeholder="Nome da empresa...")
@@ -78,8 +82,7 @@ with st.container(border=True):
     t1, t2 = st.tabs(["🎯 Segmentação", "📍 Localização"])
     with t1:
         col_a, col_b = st.columns(2)
-        with col_a:
-            f_macro = st.multiselect("Setor", sorted(df_raw['Segmento'].unique()))
+        with col_a: f_macro = st.multiselect("Setor", sorted(df_raw['Segmento'].unique()))
         with col_b:
             df_s = df_raw[df_raw['Segmento'].isin(f_macro)] if f_macro else df_raw
             f_google = st.multiselect("Nicho (Google)", sorted(df_s['categoria_google'].unique()))
@@ -111,66 +114,94 @@ preco_un = 0.30 if total_leads <= 500 else (0.20 if total_leads <= 2000 else 0.1
 valor_total = round(total_leads * preco_un, 2)
 valor_br = f"R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
-# ==========================================
-# 💰 LÓGICA DE PAGAMENTO AUTOMATIZADA
-# ==========================================
 st.divider()
 
-# 1. Manter ID de venda fixo na sessão
+# ==========================================
+# 💰 LÓGICA DE PAGAMENTO (BOTÃO ÚNICO)
+# ==========================================
+
+# 1. Garantir referência única de venda na sessão
 if 'ref_venda' not in st.session_state:
     st.session_state.ref_venda = f"REF_{int(time.time())}"
 
-# 2. Verificar se o Webhook já aprovou no banco
-venda_banco = supabase.table("vendas").select("status").eq("external_reference", st.session_state.ref_venda).execute()
-ja_pago = True if (venda_banco.data and venda_banco.data[0]['status'] == 'pago') else False
+# 2. Verificar status no Banco (Webhook) e na URL (Retorno Manual)
+check_banco = supabase.table("vendas").select("status").eq("external_reference", st.session_state.ref_venda).execute()
+pago_no_banco = True if (check_banco.data and check_banco.data[0]['status'] == 'pago') else False
+pago_na_url = st.query_params.get("status") in ["approved", "success"]
 
-# 3. Status via URL (para redundância se o usuário clicar em voltar)
-pago_url = st.query_params.get("status") in ["approved", "success"]
-
-if ja_pago or pago_url:
+if pago_no_banco or pago_na_url:
     st.balloons()
-    st.success(f"✅ Pagamento Confirmado! Total de {total_leads} leads liberados.")
+    st.success(f"✅ Pagamento Confirmado! Total de {total_leads} leads liberados para download.")
     
     col_dl1, col_dl2 = st.columns(2)
     with col_dl1:
-        st.download_button("💾 Baixar CSV", df_f.to_csv(index=False).encode('utf-8-sig'), f"leads_{st.session_state.ref_venda}.csv", "text/csv", use_container_width=True)
+        st.download_button("💾 Baixar CSV Completo", df_f.to_csv(index=False).encode('utf-8-sig'), f"leads_{st.session_state.ref_venda}.csv", "text/csv", use_container_width=True)
     with col_dl2:
         output = io.BytesIO()
-        df_f.to_excel(output, index=False)
-        st.download_button("📊 Baixar Excel", output.getvalue(), f"leads_{st.session_state.ref_venda}.xlsx", use_container_width=True)
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df_f.to_excel(writer, index=False, sheet_name='Leads')
+        st.download_button("📊 Baixar Excel Completo", output.getvalue(), f"leads_{st.session_state.ref_venda}.xlsx", use_container_width=True)
     
-    if st.button("🔄 Iniciar Nova Busca"):
-        del st.session_state.ref_venda
-        if 'link_venda' in st.session_state: del st.session_state.link_venda
+    if st.button("🔄 Realizar Nova Busca (Limpar)"):
+        st.session_state.clear()
         st.query_params.clear()
         st.rerun()
 else:
     m1, m2, m3 = st.columns(3)
-    m1.metric("Leads Selecionados", f"{total_leads:,}")
+    m1.metric("Leads Encontrados", f"{total_leads:,}")
     m2.metric("Preço Unitário", f"R$ {preco_un:.2f}")
     m3.metric("Total a Pagar", valor_br)
 
     if total_leads > 0:
         with st.container(border=True):
-            st.warning("🔒 O download está bloqueado até a confirmação do pagamento PIX.")
-
-            if 'link_venda' in st.session_state:
-                st.link_button("🚀 PAGAR AGORA COM PIX", st.session_state.link_venda, use_container_width=True, type="primary")
+            st.warning("🔒 O download será liberado automaticamente após a confirmação do pagamento.")
+            
+            # BOTÃO ÚNICO DE PAGAMENTO
+            if st.button("💳 PAGAR COM PIX AGORA", type="primary", use_container_width=True):
+                # A. Registra intenção no Supabase
+                supabase.table("vendas").upsert({
+                    "external_reference": st.session_state.ref_venda, 
+                    "valor": valor_total, 
+                    "status": "pendente"
+                }).execute()
                 
-                # MONITORAMENTO AUTOMÁTICO
-                with st.status("Monitorando pagamento PIX... Pode pagar, detectaremos aqui.", expanded=True) as s:
-                    # Loop de verificação ativa no banco (Webhook atualiza o banco, Python detecta)
-                    for _ in range(45):
+                # B. Cria preferência no Mercado Pago
+                APP_URL = "https://leads-brasil.streamlit.app/" # SUA URL OFICIAL
+                pref_data = {
+                    "items": [{"title": f"Base {total_leads} Leads B2B", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
+                    "external_reference": st.session_state.ref_venda,
+                    "back_urls": {"success": APP_URL, "failure": APP_URL, "pending": APP_URL},
+                    "auto_return": "approved",
+                }
+                
+                try:
+                    res = SDK.preference().create(pref_data)
+                    if res["status"] in [200, 201]:
+                        link_mp = res["response"]["init_point"]
+                        st.session_state.link_ativo = link_mp
+                        # Abre o link em nova aba usando JS/HTML
+                        st.markdown(f'<a href="{link_mp}" target="_blank" style="text-decoration:none;"><button style="width:100%; cursor:pointer; background-color:#2e66f1; color:white; border:none; padding:12px; border-radius:5px; font-weight:bold;">CLIQUE AQUI PARA ABRIR O PIX</button></a>', unsafe_allow_html=True)
+                    else:
+                        st.error("Erro ao gerar link no Mercado Pago.")
+                except Exception as e:
+                    st.error(f"Erro de conexão: {e}")
+
+            # MONITORAMENTO EM TEMPO REAL (Aparece se o link foi gerated)
+            if 'link_ativo' in st.session_state:
+                with st.status("Monitorando pagamento PIX...", expanded=True) as status_box:
+                    st.write("Detectaremos seu pagamento assim que for confirmado pelo banco.")
+                    for _ in range(60): # Monitora por 2 minutos
                         time.sleep(2)
                         check = supabase.table("vendas").select("status").eq("external_reference", st.session_state.ref_venda).execute()
                         if check.data and check.data[0]['status'] == 'pago':
-                            s.update(label="Pagamento Detectado!", state="complete")
+                            status_box.update(label="✅ Pagamento Detectado!", state="complete")
                             st.rerun()
+
     else:
         st.error("Selecione leads nos filtros para prosseguir.")
 
 st.divider()
-st.subheader("📋 Amostra dos Dados")
+st.subheader("📋 Amostra dos Dados (Top 50)")
 st.dataframe(df_f[['nome', 'Segmento', 'categoria_google', 'bairro', 'cidade', 'estado', 'nota']].head(50), use_container_width=True, hide_index=True)
 
 # --- GRÁFICOS ---
