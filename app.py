@@ -153,9 +153,6 @@ else:
     if total_leads > 0:
         with st.container(border=True):
             st.warning("🔒 O download está bloqueado até a confirmação do pagamento PIX.")
-            
-       
-
 
             if 'link_venda' in st.session_state:
                 st.link_button("🚀 PAGAR AGORA COM PIX", st.session_state.link_venda, use_container_width=True, type="primary")
