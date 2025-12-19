@@ -152,7 +152,7 @@ if total_leads > 0:
             if st.button("💳 GERAR LINK DE PAGAMENTO", type="primary", use_container_width=True):
                 
                 # IMPORTANTE: Use a URL real do seu deploy no Streamlit
-                APP_URL = "https://meu-saas.streamlit.app" # Substitua pela sua URL oficial
+                APP_URL = "https://leads-brasil.streamlit.app/" # Substitua pela sua URL oficial
                 
                 preference_data = {
                     "items": [
@@ -200,4 +200,3 @@ if not df_f.empty:
     with g2:
         st.write("**Top Bairros**")
         st.bar_chart(df_f['bairro'].value_counts().head(10), horizontal=True, color="#2ecc71")
-        
