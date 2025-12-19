@@ -112,7 +112,7 @@ df_f = df_f[(df_f['nota'] >= nota_range[0]) & (df_f['nota'] <= nota_range[1])]
 # --- PRECIFICAÇÃO DINÂMICA ---
 total_leads = len(df_f)
 preco_un = 0.30 if total_leads <= 500 else (0.20 if total_leads <= 2000 else 0.12)
-valor_total = total_leads * preco_un
+valor_total = round(total_leads * preco_un, 2)
 valor_br = f"R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 # ==========================================
@@ -150,21 +150,40 @@ if total_leads > 0:
         with st.container(border=True):
             st.warning("🔒 O download está bloqueado até à confirmação do pagamento.")
             if st.button("💳 GERAR LINK DE PAGAMENTO", type="primary", use_container_width=True):
+                
+                # IMPORTANTE: Use a URL real do seu deploy no Streamlit
+                APP_URL = "https://meu-saas.streamlit.app" # Substitua pela sua URL oficial
+                
                 preference_data = {
-                    "items": [{"title": f"Base {total_leads} Leads", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
+                    "items": [
+                        {
+                            "title": f"Base {total_leads} Leads B2B",
+                            "quantity": 1,
+                            "unit_price": float(valor_total),
+                            "currency_id": "BRL"
+                        }
+                    ],
                     "back_urls": {
-                        "success": "https://meu-saas.streamlit.app", # MUDAR APÓS DEPLOY
-                        "success": "http://localhost:8501",           # PARA TESTES LOCAIS
+                        "success": APP_URL,
+                        "failure": APP_URL,
+                        "pending": APP_URL
                     },
                     "auto_return": "approved",
                 }
+                
                 try:
                     res = SDK.preference().create(preference_data)
-                    link = res["response"]["init_point"]
-                    st.markdown(f'### [🚀 Clique aqui para pagar {valor_br}]({link})')
-                    st.info("Após o pagamento, você será redirecionado para liberar os arquivos.")
+                    
+                    if res["status"] in [200, 201]:
+                        link = res["response"]["init_point"]
+                        st.markdown(f'### [🚀 Clique aqui para pagar {valor_br}]({link})')
+                        st.info("Após pagar, você será redirecionado para liberar os arquivos.")
+                    else:
+                        # Exibe o erro real vindo do Mercado Pago
+                        st.error(f"Erro na API: {res['response'].get('message', 'Erro desconhecido')}")
+                        st.json(res["response"]) # Para te ajudar a debugar se falhar de novo
                 except Exception as e:
-                    st.error(f"Erro ao gerar pagamento: {e}")
+                    st.error(f"Erro ao conectar com o Mercado Pago: {e}")
 else:
     st.error("Selecione leads nos filtros para prosseguir.")
 
@@ -172,7 +191,6 @@ st.divider()
 st.subheader("📋 Amostra dos Dados (Top 50)")
 st.dataframe(df_f[['nome', 'Segmento', 'categoria_google', 'bairro', 'cidade', 'estado', 'nota']].head(50), use_container_width=True, hide_index=True)
 
-# GRÁFICOS
 if not df_f.empty:
     st.subheader("📊 Análise de Distribuição")
     g1, g2 = st.columns(2)
@@ -180,6 +198,6 @@ if not df_f.empty:
         st.write("**Top Cidades**")
         st.bar_chart(df_f['cidade'].value_counts().head(10), horizontal=True, color="#2E66F1")
     with g2:
-        st.write("**Concentração por Bairro**")
+        st.write("**Top Bairros**")
         st.bar_chart(df_f['bairro'].value_counts().head(10), horizontal=True, color="#2ecc71")
         
