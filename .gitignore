@@ -1,0 +1,20 @@
+# Secrets do Streamlit (CONTÉM SUAS SENHAS!)
+.streamlit/secrets.toml
+
+# Ambientes virtuais
+venv/
+.venv/
+env/
+
+# Arquivos temporários do Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Arquivos de sistema
+.DS_Store
+Thumbs.db
+
+# Arquivos de dados locais (se houver)
+*.csv
+*.xlsx
