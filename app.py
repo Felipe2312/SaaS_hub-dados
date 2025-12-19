@@ -204,14 +204,13 @@ st.divider()
 st.subheader("📋 Amostra dos Dados (Top 50)")
 st.dataframe(df_f[['nome', 'Segmento', 'categoria_google', 'bairro', 'cidade', 'estado', 'nota']].head(50), use_container_width=True, hide_index=True)
 
-# --- GRÁFICOS ---
+# --- ANÁLISE VISUAL ---
 if not df_f.empty:
-    st.subheader("📊 Análise de Distribuição")
+    st.subheader("📊 Distribuição da Seleção")
     g1, g2 = st.columns(2)
     with g1:
         st.write("**Top Cidades**")
-        st.bar_chart(df_f['cidade'].value_counts().head(10), horizontal=True, color="#2E66F1")
+        st.bar_chart(df_f['cidade'].value_counts().head(10), color="#2E66F1")
     with g2:
         st.write("**Top Bairros**")
-        st.bar_chart(df_f['bairro'].value_counts().head(10), horizontal=True, color="#2ecc71")
-        
+        st.bar_chart(df_f['bairro'].value_counts().head(10), color="#2ecc71")
