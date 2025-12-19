@@ -154,25 +154,11 @@ else:
         with st.container(border=True):
             st.warning("🔒 O download está bloqueado até a confirmação do pagamento PIX.")
             
-            c_p1, c_p2 = st.columns(2)
-            with c_p1:
-                if st.button("💳 GERAR LINK DE PAGAMENTO", type="primary", use_container_width=True):
-                    # Registra intenção no banco
-                    supabase.table("vendas").upsert({"external_reference": st.session_state.ref_venda, "valor": valor_total, "status": "pendente"}).execute()
-                    
-                    # Cria link no Mercado Pago
-                    pref = {
-                        "items": [{"title": f"Base {total_leads} Leads", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
-                        "external_reference": st.session_state.ref_venda,
-                        "back_urls": {"success": "https://leads-brasil.streamlit.app/"}, # Mude para sua URL oficial
-                        "auto_return": "approved",
-                    }
-                    res = SDK.preference().create(pref)
-                    st.session_state.link_venda = res["response"]["init_point"]
+       
+
 
             if 'link_venda' in st.session_state:
-                with c_p2:
-                    st.link_button("🚀 PAGAR AGORA COM PIX", st.session_state.link_venda, use_container_width=True, type="primary")
+                st.link_button("🚀 PAGAR AGORA COM PIX", st.session_state.link_venda, use_container_width=True, type="primary")
                 
                 # MONITORAMENTO AUTOMÁTICO
                 with st.status("Monitorando pagamento PIX... Pode pagar, detectaremos aqui.", expanded=True) as s:
