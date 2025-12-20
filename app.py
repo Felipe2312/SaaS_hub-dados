@@ -113,29 +113,32 @@ st.title(f"🚀 {NOME_MARCA}")
 st.markdown("### A plataforma de inteligência de dados locais.")
 st.caption("Enriqueça seu CRM com dados públicos, atualizados e validados do Google Maps.")
 
-# Bloco de Transparência
-with st.expander("ℹ️ **O que eu vou receber? (Detalhes dos Dados)**", expanded=False):
+# --- BLOCO DE INFORMAÇÕES (PRODUTO + PREÇO) ---
+with st.expander("ℹ️ **O que eu vou receber e quanto custa?**", expanded=False):
     c_info1, c_info2 = st.columns([1.2, 1])
+    
     with c_info1:
+        st.markdown("#### 📦 O que vem no arquivo?")
         st.markdown("""
-        #### 📦 Conteúdo do Arquivo
-        Você receberá um arquivo **Excel** contendo:
         * ✅ **Nome da Empresa**
         * ✅ **Telefone** (Misto: Linhas Fixas e Celulares/WhatsApp)
         * ✅ **Endereço Completo** (Rua, Bairro, Cidade, UF, CEP)
         * ✅ **Website** e Link do Google Maps
         * ✅ **Avaliação** e Nicho de Atuação
         """)
-        st.warning("⚠️ **Nota:** Como os dados são públicos, é natural que uma pequena porcentagem dos telefones esteja desatualizada ou sejam fixos. Nosso preço baixo já considera essa margem.")
+        st.warning("⚠️ **Nota:** Como os dados são públicos, é natural que uma pequena porcentagem dos telefones esteja desatualizada. Nosso preço baixo já considera essa margem.")
+
     with c_info2:
-        st.markdown("#### 📄 Exemplo Visual")
-        df_exemplo = pd.DataFrame({
-            "Empresa": ["Padaria Pão Dourado", "Auto Center Silva"],
-            "Telefone": ["(11) 99999-1234 📱", "(21) 3344-5566 ☎️"],
-            "Tipo": ["Celular/Zap", "Fixo"],
-            "Cidade": ["São Paulo", "Rio de Janeiro"],
-        })
-        st.dataframe(df_exemplo, hide_index=True, use_container_width=True)
+        st.markdown("#### 💲 Tabela de Preços (Volume)")
+        st.markdown("""
+        | Quantidade | Preço/Lead | Categoria |
+        | :--- | :--- | :--- |
+        | Até 200 | **R$ 0,35** | Básico |
+        | 201 a 1.000 | **R$ 0,25** | Profissional |
+        | 1.001 a 5.000 | **R$ 0,15** | Business |
+        | + 5.000 | **R$ 0,08** | Enterprise |
+        """)
+        st.caption("*O desconto é aplicado automaticamente no total.")
 
 st.divider()
 
@@ -269,7 +272,6 @@ else:
                 st.subheader("📬 Finalizar Compra")
                 ce1, ce2 = st.columns(2)
                 
-                # --- CAMPOS COM PLACEHOLDER ---
                 with ce1: 
                     email_input = st.text_input("Seu E-mail", placeholder="seu@email.com")
                 with ce2: 
