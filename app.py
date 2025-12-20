@@ -160,10 +160,12 @@ with st.expander("ℹ️ **O que eu vou receber e quanto custa?**", expanded=Fal
     with c_info2:
         st.markdown("#### 💲 Tabela de Preços")
         st.markdown("""
-        | Qtd | Preço |
+        | Qtd | Preço/Lead |
         | :--- | :--- |
-        | < 200 | **R$ 0,35** |
-        | > 5k | **R$ 0,05** |
+        | Até 200 | **R$ 0,35** |
+        | 201 a 1k | **R$ 0,20** |
+        | 1k a 5k | **R$ 0,10** |
+        | + 5k | **R$ 0,05** |
         """)
 
 st.divider()
