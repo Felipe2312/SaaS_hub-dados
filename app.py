@@ -44,14 +44,30 @@ def fmt_real(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def classificar_telefone_global(tel):
-    """Classifica o telefone para uso nos filtros e no Excel"""
-    if not tel: return "Indefinido"
+    """
+    Classifica o telefone. 
+    Retorna 'Outro' para números estranhos (ex: DDD iniciando com 0).
+    """
+    if not tel: return "Outro"
     nums = "".join(filter(str.isdigit, str(tel)))
     
+    # Se começar com 55 (Padrão Scraper)
     if nums.startswith("55"):
+        # Regra de Ouro: O 3º dígito (primeiro do DDD) NÃO pode ser 0.
+        # Ex: 55 03... -> Lixo. 55 11... -> Ok.
+        if len(nums) > 2 and nums[2] == '0':
+            return "Outro"
+
+        # 13 dígitos = Celular (55 + 2 + 9 + 8)
         if len(nums) == 13 and nums[4] == '9': return "Celular"
+        # 12 dígitos = Fixo (55 + 2 + 8)
         elif len(nums) == 12: return "Fixo"
+    
+    # Fallback (sem 55)
     else:
+        # Se começar com 0 (011...), é lixo ou formato antigo
+        if nums.startswith("0"): return "Outro"
+
         if len(nums) == 11 and nums[2] == '9': return "Celular"
         elif len(nums) == 10: return "Fixo"
             
@@ -117,7 +133,13 @@ def get_all_data():
         df['estado'] = df['estado'].fillna('N/A')
         df['categoria_google'] = df['categoria_google'].fillna('Não identificada')
         df['Segmento'] = df['categoria_google'].apply(normalizar_categoria)
+        
+        # 1. Classifica
         df['tipo_contato'] = df['telefone'].apply(classificar_telefone_global)
+        
+        # 2. FILTRO DE QUALIDADE (AQUI ESTÁ A MÁGICA)
+        # Removemos tudo que for "Outro". Só sobra Fixo e Celular.
+        df = df[df['tipo_contato'].isin(['Celular', 'Fixo'])]
         
     return df
 
@@ -157,12 +179,11 @@ with st.expander("ℹ️ **O que eu vou receber e quanto custa?**", expanded=Fal
 st.divider()
 
 # ==========================================
-# 🔍 ÁREA DE FILTROS (HIERARQUIA INTELIGENTE)
+# 🔍 ÁREA DE FILTROS
 # ==========================================
 with st.container(border=True):
     st.subheader("🛠️ Configure sua Lista")
     
-    # Filtros Globais
     c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
     with c1: busca_nome = st.text_input("Buscar por Nome (Opcional)", placeholder="Ex: Silva...")
     with c2: nota_range = st.select_slider("Qualidade Mínima", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
@@ -171,15 +192,12 @@ with st.container(border=True):
 
     t1, t2 = st.tabs(["🎯 Segmentação", "📍 Localização"])
 
-    # 1. HIERARQUIA DE SEGMENTO (Setor -> Nicho)
     with t1:
         col_a, col_b = st.columns(2)
         with col_a:
-            # Opções de Macro (Sempre baseado no RAW)
             opts_macro = sorted(df_raw['Segmento'].unique()) if not df_raw.empty else []
             f_macro = st.multiselect("Setor Principal", opts_macro)
         with col_b:
-            # Opções de Nicho (Depende do MACRO selecionado, mas não do local)
             if f_macro:
                 df_nicho_opts = df_raw[df_raw['Segmento'].isin(f_macro)]
             else:
@@ -188,16 +206,13 @@ with st.container(border=True):
             opts_nicho = sorted(df_nicho_opts['categoria_google'].unique()) if not df_nicho_opts.empty else []
             f_google = st.multiselect("Nicho Específico", opts_nicho)
 
-    # 2. HIERARQUIA DE LOCALIZAÇÃO (UF -> Cidade -> Bairro)
     with t2:
         col_d, col_e, col_f = st.columns(3)
         
-        # Estado (Sempre todas as opções)
         opts_uf = sorted(df_raw['estado'].unique()) if not df_raw.empty else []
         with col_d:
             f_uf = st.multiselect("Estado (UF)", opts_uf)
         
-        # Cidade (Depende APENAS do Estado)
         if f_uf:
             df_cid_opts = df_raw[df_raw['estado'].isin(f_uf)]
         else:
@@ -207,7 +222,6 @@ with st.container(border=True):
         with col_e:
             f_cidade = st.multiselect("Cidade", opts_cidade)
         
-        # Bairro (Depende APENAS da Cidade)
         if f_cidade:
             df_bai_opts = df_cid_opts[df_cid_opts['cidade'].isin(f_cidade)]
         else:
@@ -217,29 +231,21 @@ with st.container(border=True):
         with col_f:
             f_bairro = st.multiselect("Bairro", opts_bairro)
 
-# --- APLICAÇÃO FINAL DOS FILTROS (INTERSEÇÃO) ---
-# Aqui juntamos tudo. Se o usuário escolheu "Acre" e "Pizzaria", vai dar 0 resultados,
-# mas as opções de filtro não sumiram enquanto ele navegava.
-
+# --- APLICAÇÃO FINAL DOS FILTROS ---
 df_f = df_raw.copy()
 
-# 1. Filtros de Texto/Qualidade
 if busca_nome: df_f = df_f[df_f['nome'].str.contains(busca_nome, case=False, na=False)]
 if filtro_site == "Sim": df_f = df_f[df_f['site'].notnull()]
 elif filtro_site == "Não": df_f = df_f[df_f['site'].isnull()]
 df_f = df_f[(df_f['nota'] >= nota_range[0]) & (df_f['nota'] <= nota_range[1])]
 
-# 2. Filtro de Telefone
 if filtro_tel == "Só Celular":
     df_f = df_f[df_f['tipo_contato'] == 'Celular']
 elif filtro_tel == "Só Fixo":
     df_f = df_f[df_f['tipo_contato'] == 'Fixo']
 
-# 3. Filtros de Segmento
 if f_macro: df_f = df_f[df_f['Segmento'].isin(f_macro)]
 if f_google: df_f = df_f[df_f['categoria_google'].isin(f_google)]
-
-# 4. Filtros de Localização
 if f_uf: df_f = df_f[df_f['estado'].isin(f_uf)]
 if f_cidade: df_f = df_f[df_f['cidade'].isin(f_cidade)]
 if f_bairro: df_f = df_f[df_f['bairro'].isin(f_bairro)]
@@ -411,7 +417,7 @@ else:
                                 status.update(label="✅ Pago!", state="complete")
                                 st.rerun()
 
-    # 3. Análise Visual (Com Mascaramento)
+    # 3. Análise Visual
     st.divider()
     st.subheader("📊 Raio-X da Base Selecionada")
     g1, g2, g3 = st.columns(3)
