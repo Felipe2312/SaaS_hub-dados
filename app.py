@@ -61,11 +61,12 @@ def classificar_telefone_global(tel):
     return "Outro"
 
 def calcular_preco(qtd):
+    # TABELA DE PREÇOS AJUSTADA (MERCADO)
     tabela = [
-        {"limite": 200, "preco": 0.35, "nome": "Básico"},
-        {"limite": 1000, "preco": 0.25, "nome": "Profissional"},
-        {"limite": 5000, "preco": 0.15, "nome": "Business"},
-        {"limite": float('inf'), "preco": 0.08, "nome": "Enterprise"}
+        {"limite": 200, "preco": 0.35, "nome": "Iniciante"},
+        {"limite": 1000, "preco": 0.20, "nome": "Profissional"}, # Mais agressivo
+        {"limite": 5000, "preco": 0.10, "nome": "Business"},     # Muito atrativo
+        {"limite": float('inf'), "preco": 0.05, "nome": "Atacado"} # Preço "No-Brainer"
     ]
     faixa_atual = None
     prox_faixa_info = None
@@ -81,7 +82,7 @@ def calcular_preco(qtd):
 
     preco_unitario = faixa_atual["preco"]
     valor_total = qtd * preco_unitario
-    valor_ancora = qtd * 0.35
+    valor_ancora = qtd * 0.35 # Ancoragem sempre no preço base
     
     pct_economia_total = 0 if preco_unitario >= 0.35 else int(((valor_ancora - valor_total) / valor_ancora) * 100)
 
@@ -112,7 +113,6 @@ def get_all_data():
         # Tratamentos Básicos
         df['nota'] = pd.to_numeric(df['nota'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
         
-        # TRATAMENTO DE AVALIAÇÕES (Inteiro)
         if 'avaliacoes' in df.columns:
             df['avaliacoes'] = pd.to_numeric(df['avaliacoes'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0).astype(int)
         else:
@@ -123,18 +123,16 @@ def get_all_data():
         if 'categoria_google' not in df.columns: df['categoria_google'] = 'Outros'
         df['categoria_google'] = df['categoria_google'].fillna('Não identificada')
         
-        # Segmento e Telefone
         df['Segmento'] = df['categoria_google'].apply(normalizar_categoria)
         df['tipo_contato'] = df['telefone'].apply(classificar_telefone_global)
         
-        # Data de Atualização
         if 'data_extracao' in df.columns:
             df['data_obj'] = pd.to_datetime(df['data_extracao'], errors='coerce')
             df['data_fmt'] = df['data_obj'].dt.strftime('%d/%m/%Y').fillna(datetime.today().strftime('%d/%m/%Y'))
         else:
             df['data_fmt'] = datetime.today().strftime('%d/%m/%Y')
         
-        # FILTRO DE QUALIDADE
+        # Filtro de Qualidade
         df = df[df['tipo_contato'].isin(['Celular', 'Fixo'])]
         
     return df
@@ -165,7 +163,7 @@ with st.expander("ℹ️ **O que eu vou receber e quanto custa?**", expanded=Fal
         | Qtd | Preço |
         | :--- | :--- |
         | < 200 | **R$ 0,35** |
-        | > 5k | **R$ 0,08** |
+        | > 5k | **R$ 0,05** |
         """)
 
 st.divider()
@@ -177,10 +175,7 @@ with st.container(border=True):
     
     with c1: busca_nome = st.text_input("Buscar Nome", placeholder="Ex: Silva...")
     with c2: nota_range = st.select_slider("Nota Mínima", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
-    
-    # --- FILTRO FAIXA DE AVALIAÇÕES (MÍN E MÁX) ---
     with c3: avaliacoes_range = st.slider("Qtd. Avaliações", 0, 1000, (0, 1000), help="Filtre pela quantidade de reviews")
-    
     with c4: filtro_site = st.radio("Site?", ["Todos", "Sim", "Não"], horizontal=True)
     with c5: filtro_tel = st.radio("Telefone", ["Todos", "Só Celular", "Só Fixo"], horizontal=True)
 
@@ -220,8 +215,6 @@ elif filtro_site == "Não": df_f = df_f[df_f['site'].isnull()]
 
 # Filtros Numéricos
 df_f = df_f[(df_f['nota'] >= nota_range[0]) & (df_f['nota'] <= nota_range[1])]
-
-# APLICA FAIXA DE AVALIAÇÕES (MIN E MAX)
 df_f = df_f[(df_f['avaliacoes'] >= avaliacoes_range[0]) & (df_f['avaliacoes'] <= avaliacoes_range[1])]
 
 if filtro_tel == "Só Celular": df_f = df_f[df_f['tipo_contato'] == 'Celular']
@@ -233,9 +226,7 @@ if f_uf: df_f = df_f[df_f['estado'].isin(f_uf)]
 if f_cidade: df_f = df_f[df_f['cidade'].isin(f_cidade)]
 if f_bairro: df_f = df_f[df_f['bairro'].isin(f_bairro)]
 
-# Verifica se o filtro de avaliações foi mexido (diferente do padrão 0-1000)
 filtro_aval_ativo = (avaliacoes_range[0] > 0) or (avaliacoes_range[1] < 1000)
-
 filtros_ativos = any([busca_nome, f_macro, f_google, f_uf, f_cidade, f_bairro, filtro_aval_ativo])
 
 if not filtros_ativos:
@@ -262,7 +253,9 @@ else:
             with c1:
                 st.caption("Volume")
                 st.markdown(f"### {total_leads:,}".replace(",", "."))
-                if filtro_aval_ativo: st.caption(f"Avaliações: {avaliacoes_range[0]} a {avaliacoes_range[1]}")
+                # Mostra badge de nível
+                cor_badge = "#FFD700" if resumo_preco['nivel'] == "Atacado" else "#CD7F32"
+                st.markdown(f"<span style='background-color:{cor_badge}; color:black; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:bold;'>{resumo_preco['nivel'].upper()}</span>", unsafe_allow_html=True)
             with c2:
                 st.caption("Preço Unitário")
                 st.markdown(f"### {fmt_real(resumo_preco['unitario'])}")
@@ -275,6 +268,20 @@ else:
                         <span style="background-color: #d4edda; color: #155724; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: bold;">-{resumo_preco['pct_off']}% OFF</span>
                     </div>""", unsafe_allow_html=True)
                 st.markdown(f"<h3 style='color:#2ecc71; margin-top:0px'>{fmt_real(resumo_preco['total'])}</h3>", unsafe_allow_html=True)
+
+            # === GAMIFICATION (PRÓXIMO NÍVEL) ===
+            # Recoloquei essa funcionalidade aqui
+            if resumo_preco['prox_qtd']:
+                meta = resumo_preco['prox_qtd']
+                faltam = meta - total_leads
+                prox_preco = resumo_preco['prox_preco']
+                
+                # Barra de Progresso Visual
+                progresso = min(total_leads / meta, 0.95)
+                st.write("")
+                st.progress(progresso)
+                
+                st.info(f"💡 Dica: Adicione mais **{faltam} leads** (ex: expanda os bairros) para pagar **{fmt_real(prox_preco)}/unid**.")
 
         # ==========================================
         # 💳 PAGAMENTO & DOWNLOAD
