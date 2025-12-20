@@ -135,7 +135,6 @@ def get_all_data():
             df['data_temp'] = pd.to_datetime(df['data_extracao'], errors='coerce')
             df['Data Atualização'] = df['data_temp'].dt.strftime('%d/%m/%Y').fillna('Recente')
         else:
-            # Caso não tenha a coluna no banco, usa a data de hoje como fallback ou texto fixo
             df['Data Atualização'] = datetime.today().strftime('%d/%m/%Y')
 
         # 1. Classifica Telefones
@@ -255,7 +254,6 @@ if not filtros_ativos:
     with m2: st.metric("Cidades Cobertas", f"{df_raw['cidade'].nunique()}")
     with m3: st.metric("Setores Disponíveis", f"{df_raw['Segmento'].nunique()}")
     
-    # --- MOSTRAR A DATA DE ATUALIZAÇÃO NO DASHBOARD ---
     if 'Data Atualização' in df_raw.columns and not df_raw.empty:
         ultima_data = df_raw['Data Atualização'].max()
         st.caption(f"📅 Base atualizada até: **{ultima_data}**")
@@ -345,31 +343,51 @@ else:
 
                 if st.button("💳 IR PARA PAGAMENTO SEGURO", type="primary", use_container_width=True, disabled=not pode_prosseguir):
                     
-                    # === CRIAÇÃO DO EXCEL INTELIGENTE (COM LINK E DATA) ===
+                    # === CRIAÇÃO E HIGIENIZAÇÃO DO EXCEL ===
                     df_export = df_f.copy()
 
-                    def gerar_link_wpp(tel, tipo):
+                    def gerar_link_wpp(row):
+                        tel = str(row.get('telefone', ''))
+                        tipo = str(row.get('tipo_contato', ''))
+                        
                         if tipo == "Celular": 
-                            nums = "".join(filter(str.isdigit, str(tel)))
+                            nums = "".join(filter(str.isdigit, tel))
                             if not nums.startswith("55"): nums = f"55{nums}"
                             return f"https://wa.me/{nums}"
                         return ""
 
-                    df_export = df_export.rename(columns={'tipo_contato': 'Tipo Telefone'})
-                    df_export['Link WhatsApp'] = df_export.apply(lambda x: gerar_link_wpp(x['telefone'], x['Tipo Telefone']), axis=1)
+                    df_export['Link WhatsApp'] = df_export.apply(gerar_link_wpp, axis=1)
 
-                    # Seleção de Colunas para o Excel (Incluindo Data Atualização e Link)
-                    cols_preferenciais = ['nome', 'telefone', 'Tipo Telefone', 'Link WhatsApp', 'Data Atualização', 'Segmento', 'categoria_google', 'bairro', 'cidade', 'estado', 'nota', 'site', 'endereco', 'maps_link']
-                    cols_finais = [c for c in cols_preferenciais if c in df_export.columns]
-                    df_export = df_export[cols_finais]
+                    # MAPEAMENTO DE COLUNAS (ORDEM E NOME FINAL)
+                    # Adicionei 'tipo_contato' -> 'Tipo de Telefone'
+                    colunas_desejadas = {
+                        'nome': 'Empresa',
+                        'telefone': 'Telefone',
+                        'tipo_contato': 'Tipo de Telefone', # <--- AQUI!
+                        'Link WhatsApp': 'Link WhatsApp',
+                        'Data Atualização': 'Atualizado em',
+                        'Segmento': 'Setor',
+                        'categoria_google': 'Nicho',
+                        'nota': 'Nota Google',
+                        'site': 'Site',
+                        'endereco_completo': 'Endereço Completo',
+                        'bairro': 'Bairro',
+                        'cidade': 'Cidade',
+                        'estado': 'UF'
+                    }
+
+                    # Filtra só o que existe e renomeia
+                    cols_para_exportar = [c for c in colunas_desejadas.keys() if c in df_export.columns]
+                    df_export = df_export[cols_para_exportar].rename(columns=colunas_desejadas)
 
                     output_file = io.BytesIO()
                     with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
                         df_export.to_excel(writer, index=False, sheet_name='Leads')
                         worksheet = writer.sheets['Leads']
-                        worksheet.set_column('A:A', 30) # Nome
+                        # Ajuste de larguras para leitura fácil
+                        worksheet.set_column('A:A', 30) # Empresa
                         worksheet.set_column('B:C', 18) # Telefone e Tipo
-                        worksheet.set_column('D:D', 25) # Link Zap
+                        worksheet.set_column('D:D', 25) # Link
                         worksheet.set_column('E:E', 12) # Data
 
                     nome_arquivo = f"{st.session_state.ref_venda}.xlsx"
@@ -437,8 +455,19 @@ else:
     if 'telefone' in df_preview.columns:
         df_preview['telefone'] = df_preview['telefone'].apply(lambda x: str(x)[:-4] + "****" if x and len(str(x)) > 4 else "****")
 
-    # Adicionar 'Data Atualização' na amostra visual também
-    colunas_exibicao = {'nome': 'Empresa', 'tipo_contato': 'Tipo', 'telefone': 'Telefone', 'Data Atualização': 'Atualizado em', 'Segmento': 'Setor', 'categoria_google': 'Nicho', 'bairro': 'Bairro', 'cidade': 'Cidade', 'estado': 'UF', 'nota': 'Nota'}
-    cols_exists = [c for c in colunas_exibicao.keys() if c in df_preview.columns]
+    # Mapeamento para visualização no site (Amostra Grátis)
+    colunas_visual = {
+        'nome': 'Empresa', 
+        'tipo_contato': 'Tipo', 
+        'telefone': 'Telefone', 
+        'Data Atualização': 'Atualizado em',
+        'Segmento': 'Setor', 
+        'categoria_google': 'Nicho', 
+        'bairro': 'Bairro', 
+        'cidade': 'Cidade', 
+        'estado': 'UF', 
+        'nota': 'Nota'
+    }
+    cols_exists = [c for c in colunas_visual.keys() if c in df_preview.columns]
     
-    st.dataframe(df_preview[cols_exists].rename(columns=colunas_exibicao), use_container_width=True, hide_index=True)
+    st.dataframe(df_preview[cols_exists].rename(columns=colunas_visual), use_container_width=True, hide_index=True)
