@@ -5,6 +5,7 @@ import io
 import mercadopago
 import time
 import os
+from datetime import datetime
 
 # ==========================================
 # 🔐 CONFIGURAÇÕES E CREDENCIAIS
@@ -45,8 +46,7 @@ def fmt_real(valor):
 
 def classificar_telefone_global(tel):
     """
-    Classifica o telefone. 
-    Retorna 'Outro' para números estranhos (ex: DDD iniciando com 0).
+    Classifica o telefone e filtra lixo (DDD iniciando com 0).
     """
     if not tel: return "Outro"
     nums = "".join(filter(str.isdigit, str(tel)))
@@ -54,9 +54,7 @@ def classificar_telefone_global(tel):
     # Se começar com 55 (Padrão Scraper)
     if nums.startswith("55"):
         # Regra de Ouro: O 3º dígito (primeiro do DDD) NÃO pode ser 0.
-        # Ex: 55 03... -> Lixo. 55 11... -> Ok.
-        if len(nums) > 2 and nums[2] == '0':
-            return "Outro"
+        if len(nums) > 2 and nums[2] == '0': return "Outro"
 
         # 13 dígitos = Celular (55 + 2 + 9 + 8)
         if len(nums) == 13 and nums[4] == '9': return "Celular"
@@ -65,9 +63,7 @@ def classificar_telefone_global(tel):
     
     # Fallback (sem 55)
     else:
-        # Se começar com 0 (011...), é lixo ou formato antigo
         if nums.startswith("0"): return "Outro"
-
         if len(nums) == 11 and nums[2] == '9': return "Celular"
         elif len(nums) == 10: return "Fixo"
             
@@ -134,11 +130,18 @@ def get_all_data():
         df['categoria_google'] = df['categoria_google'].fillna('Não identificada')
         df['Segmento'] = df['categoria_google'].apply(normalizar_categoria)
         
-        # 1. Classifica
+        # --- TRATAMENTO DE DATA (dd/mm/aaaa) ---
+        if 'data_extracao' in df.columns:
+            df['data_temp'] = pd.to_datetime(df['data_extracao'], errors='coerce')
+            df['Data Atualização'] = df['data_temp'].dt.strftime('%d/%m/%Y').fillna('Recente')
+        else:
+            # Caso não tenha a coluna no banco, usa a data de hoje como fallback ou texto fixo
+            df['Data Atualização'] = datetime.today().strftime('%d/%m/%Y')
+
+        # 1. Classifica Telefones
         df['tipo_contato'] = df['telefone'].apply(classificar_telefone_global)
         
-        # 2. FILTRO DE QUALIDADE (AQUI ESTÁ A MÁGICA)
-        # Removemos tudo que for "Outro". Só sobra Fixo e Celular.
+        # 2. FILTRO DE QUALIDADE (Limpeza de Lixo)
         df = df[df['tipo_contato'].isin(['Celular', 'Fixo'])]
         
     return df
@@ -159,9 +162,9 @@ with st.expander("ℹ️ **O que eu vou receber e quanto custa?**", expanded=Fal
         st.markdown("""
         * ✅ **Nome da Empresa**
         * ✅ **Telefone** (Você escolhe: Móvel ou Misto)
-        * ✅ **Endereço Completo** (Rua, Bairro, Cidade, UF, CEP)
-        * ✅ **Website** e Link do Google Maps
-        * ✅ **Avaliação** e Nicho de Atuação
+        * ✅ **Link WhatsApp** (Para celulares)
+        * ✅ **Data de Atualização** (Dados Recentes)
+        * ✅ **Endereço Completo** e Link do Google Maps
         """)
         st.warning("⚠️ **Nota:** Como os dados são públicos, é natural que uma pequena porcentagem dos telefones esteja desatualizada. Nosso preço baixo já considera essa margem.")
     with c_info2:
@@ -208,30 +211,20 @@ with st.container(border=True):
 
     with t2:
         col_d, col_e, col_f = st.columns(3)
-        
         opts_uf = sorted(df_raw['estado'].unique()) if not df_raw.empty else []
-        with col_d:
-            f_uf = st.multiselect("Estado (UF)", opts_uf)
+        with col_d: f_uf = st.multiselect("Estado (UF)", opts_uf)
         
-        if f_uf:
-            df_cid_opts = df_raw[df_raw['estado'].isin(f_uf)]
-        else:
-            df_cid_opts = df_raw
+        if f_uf: df_cid_opts = df_raw[df_raw['estado'].isin(f_uf)]
+        else: df_cid_opts = df_raw
         opts_cidade = sorted(df_cid_opts['cidade'].unique()) if not df_cid_opts.empty else []
+        with col_e: f_cidade = st.multiselect("Cidade", opts_cidade)
         
-        with col_e:
-            f_cidade = st.multiselect("Cidade", opts_cidade)
-        
-        if f_cidade:
-            df_bai_opts = df_cid_opts[df_cid_opts['cidade'].isin(f_cidade)]
-        else:
-            df_bai_opts = df_cid_opts
+        if f_cidade: df_bai_opts = df_cid_opts[df_cid_opts['cidade'].isin(f_cidade)]
+        else: df_bai_opts = df_cid_opts
         opts_bairro = sorted(df_bai_opts['bairro'].unique()) if not df_bai_opts.empty else []
+        with col_f: f_bairro = st.multiselect("Bairro", opts_bairro)
 
-        with col_f:
-            f_bairro = st.multiselect("Bairro", opts_bairro)
-
-# --- APLICAÇÃO FINAL DOS FILTROS ---
+# --- APLICAÇÃO DOS FILTROS ---
 df_f = df_raw.copy()
 
 if busca_nome: df_f = df_f[df_f['nome'].str.contains(busca_nome, case=False, na=False)]
@@ -239,10 +232,8 @@ if filtro_site == "Sim": df_f = df_f[df_f['site'].notnull()]
 elif filtro_site == "Não": df_f = df_f[df_f['site'].isnull()]
 df_f = df_f[(df_f['nota'] >= nota_range[0]) & (df_f['nota'] <= nota_range[1])]
 
-if filtro_tel == "Só Celular":
-    df_f = df_f[df_f['tipo_contato'] == 'Celular']
-elif filtro_tel == "Só Fixo":
-    df_f = df_f[df_f['tipo_contato'] == 'Fixo']
+if filtro_tel == "Só Celular": df_f = df_f[df_f['tipo_contato'] == 'Celular']
+elif filtro_tel == "Só Fixo": df_f = df_f[df_f['tipo_contato'] == 'Fixo']
 
 if f_macro: df_f = df_f[df_f['Segmento'].isin(f_macro)]
 if f_google: df_f = df_f[df_f['categoria_google'].isin(f_google)]
@@ -263,6 +254,12 @@ if not filtros_ativos:
     with m1: st.metric("Total de Empresas", f"{len(df_raw):,}".replace(",", "."))
     with m2: st.metric("Cidades Cobertas", f"{df_raw['cidade'].nunique()}")
     with m3: st.metric("Setores Disponíveis", f"{df_raw['Segmento'].nunique()}")
+    
+    # --- MOSTRAR A DATA DE ATUALIZAÇÃO NO DASHBOARD ---
+    if 'Data Atualização' in df_raw.columns and not df_raw.empty:
+        ultima_data = df_raw['Data Atualização'].max()
+        st.caption(f"📅 Base atualizada até: **{ultima_data}**")
+        
     st.markdown("---")
 
 else:
@@ -275,7 +272,7 @@ else:
 
     if total_leads == 0:
         st.warning("⚠️ Nenhum lead encontrado com essa combinação exata de filtros.")
-        st.markdown("**Dica:** Tente relaxar os filtros de Bairro ou Nicho para encontrar mais resultados.")
+        st.markdown("**Dica:** Tente relaxar os filtros de Bairro ou Nicho.")
     else:
         # Bloco de Preço Visual
         with st.container(border=True):
@@ -348,6 +345,7 @@ else:
 
                 if st.button("💳 IR PARA PAGAMENTO SEGURO", type="primary", use_container_width=True, disabled=not pode_prosseguir):
                     
+                    # === CRIAÇÃO DO EXCEL INTELIGENTE (COM LINK E DATA) ===
                     df_export = df_f.copy()
 
                     def gerar_link_wpp(tel, tipo):
@@ -360,7 +358,8 @@ else:
                     df_export = df_export.rename(columns={'tipo_contato': 'Tipo Telefone'})
                     df_export['Link WhatsApp'] = df_export.apply(lambda x: gerar_link_wpp(x['telefone'], x['Tipo Telefone']), axis=1)
 
-                    cols_preferenciais = ['nome', 'telefone', 'Tipo Telefone', 'Link WhatsApp', 'Segmento', 'categoria_google', 'bairro', 'cidade', 'estado', 'nota', 'site', 'endereco', 'maps_link']
+                    # Seleção de Colunas para o Excel (Incluindo Data Atualização e Link)
+                    cols_preferenciais = ['nome', 'telefone', 'Tipo Telefone', 'Link WhatsApp', 'Data Atualização', 'Segmento', 'categoria_google', 'bairro', 'cidade', 'estado', 'nota', 'site', 'endereco', 'maps_link']
                     cols_finais = [c for c in cols_preferenciais if c in df_export.columns]
                     df_export = df_export[cols_finais]
 
@@ -368,9 +367,10 @@ else:
                     with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
                         df_export.to_excel(writer, index=False, sheet_name='Leads')
                         worksheet = writer.sheets['Leads']
-                        worksheet.set_column('A:A', 30)
-                        worksheet.set_column('B:C', 18)
-                        worksheet.set_column('D:D', 25)
+                        worksheet.set_column('A:A', 30) # Nome
+                        worksheet.set_column('B:C', 18) # Telefone e Tipo
+                        worksheet.set_column('D:D', 25) # Link Zap
+                        worksheet.set_column('E:E', 12) # Data
 
                     nome_arquivo = f"{st.session_state.ref_venda}.xlsx"
                     
@@ -417,7 +417,7 @@ else:
                                 status.update(label="✅ Pago!", state="complete")
                                 st.rerun()
 
-    # 3. Análise Visual
+    # 3. Análise Visual (Com Mascaramento)
     st.divider()
     st.subheader("📊 Raio-X da Base Selecionada")
     g1, g2, g3 = st.columns(3)
@@ -437,7 +437,8 @@ else:
     if 'telefone' in df_preview.columns:
         df_preview['telefone'] = df_preview['telefone'].apply(lambda x: str(x)[:-4] + "****" if x and len(str(x)) > 4 else "****")
 
-    colunas_exibicao = {'nome': 'Empresa', 'tipo_contato': 'Tipo', 'telefone': 'Telefone', 'Segmento': 'Setor', 'categoria_google': 'Nicho', 'bairro': 'Bairro', 'cidade': 'Cidade', 'estado': 'UF', 'nota': 'Nota'}
+    # Adicionar 'Data Atualização' na amostra visual também
+    colunas_exibicao = {'nome': 'Empresa', 'tipo_contato': 'Tipo', 'telefone': 'Telefone', 'Data Atualização': 'Atualizado em', 'Segmento': 'Setor', 'categoria_google': 'Nicho', 'bairro': 'Bairro', 'cidade': 'Cidade', 'estado': 'UF', 'nota': 'Nota'}
     cols_exists = [c for c in colunas_exibicao.keys() if c in df_preview.columns]
     
     st.dataframe(df_preview[cols_exists].rename(columns=colunas_exibicao), use_container_width=True, hide_index=True)
