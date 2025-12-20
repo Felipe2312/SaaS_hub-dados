@@ -43,41 +43,38 @@ def fmt_real(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def calcular_preco(qtd):
-    """Calcula preço dinâmico com descontos progressivos"""
-    # Preço Base (Ancoragem - O preço "de mercado")
-    PRECO_BASE_UNITARIO = 0.50 
-    
-    # Tabela de Preços Dinâmica
-    if qtd <= 200:
-        preco_unitario = 0.35
-        nivel = "Básico"
-        prox_nivel = 201
-    elif qtd <= 1000:
-        preco_unitario = 0.25
-        nivel = "Bronze"
-        prox_nivel = 1001
-    elif qtd <= 5000:
-        preco_unitario = 0.15
-        nivel = "Prata"
-        prox_nivel = 5001
-    else:
-        preco_unitario = 0.08 # Preço matador para grandes volumes
-        nivel = "Ouro"
-        prox_nivel = None
+    """Calcula preço baseado em Tiers (Faixas de Volume) - Modelo Transparente"""
+    tabela = [
+        {"limite": 200, "preco": 0.35, "nome": "Básico"},
+        {"limite": 1000, "preco": 0.25, "nome": "Profissional"},
+        {"limite": 5000, "preco": 0.15, "nome": "Business"},
+        {"limite": float('inf'), "preco": 0.08, "nome": "Enterprise"}
+    ]
 
-    valor_tabela = qtd * PRECO_BASE_UNITARIO
-    valor_final = qtd * preco_unitario
-    desconto_total = valor_tabela - valor_final
-    porcentagem_off = int((desconto_total / valor_tabela) * 100) if valor_tabela > 0 else 0
+    faixa_atual = None
+    proxima_faixa = None
+
+    # Identifica em qual faixa o cliente está
+    for i, faixa in enumerate(tabela):
+        if qtd <= faixa["limite"]:
+            faixa_atual = faixa
+            if i + 1 < len(tabela):
+                proxima_faixa = tabela[i+1]
+            break
+    
+    # Fallback para a última faixa se exceder o limite
+    if not faixa_atual:
+        faixa_atual = tabela[-1]
+
+    preco_unitario = faixa_atual["preco"]
+    valor_total = qtd * preco_unitario
 
     return {
         "unitario": preco_unitario,
-        "total": valor_final,
-        "total_tabela": valor_tabela,
-        "economia": desconto_total,
-        "off": porcentagem_off,
-        "nivel": nivel,
-        "prox": prox_nivel
+        "total": valor_total,
+        "nivel": faixa_atual["nome"],
+        "prox_qtd": proxima_faixa["limite"] + 1 if proxima_faixa else None,
+        "prox_preco": proxima_faixa["preco"] if proxima_faixa else None
     }
 
 @st.cache_data(ttl=600)
@@ -157,50 +154,51 @@ valor_total = round(resumo_preco['total'], 2) # Valor final para o Mercado Pago
 
 if total_leads > 0:
     st.divider()
+    
+    # Tabela de Preços (Expander para não poluir, mas disponível para consulta)
+    with st.expander("ℹ️ Ver Tabela de Descontos por Volume (Quanto mais leads, menor o preço unitário)", expanded=False):
+        st.markdown("""
+        | Quantidade de Leads | Preço por Lead | Categoria |
+        | :--- | :--- | :--- |
+        | Até 200 | **R$ 0,35** | Básico |
+        | 201 a 1.000 | **R$ 0,25** | Profissional |
+        | 1.001 a 5.000 | **R$ 0,15** | Business |
+        | Acima de 5.000 | **R$ 0,08** | Enterprise |
+        """)
+
     with st.container(border=True):
-        c_topo1, c_topo2 = st.columns([3, 1])
-        with c_topo1:
-            st.markdown(f"### 🛍️ Resumo do Pedido")
-            st.caption("Dados extraídos em tempo real e validados.")
-        with c_topo2:
-            # Badge de Nível (Gamificação)
-            cor_badge = "#FFD700" if resumo_preco['nivel'] == "Ouro" else ("#C0C0C0" if resumo_preco['nivel'] == "Prata" else "#CD7F32")
-            st.markdown(f"""
-                <div style="text-align:right;">
-                    <span style="background-color:{cor_badge}; color:black; padding: 4px 10px; border-radius:15px; font-size:12px; font-weight:bold;">
-                        NÍVEL {resumo_preco['nivel'].upper()}
-                    </span>
-                </div>
-            """, unsafe_allow_html=True)
+        c1, c2, c3 = st.columns([1, 1, 1])
+        
+        with c1:
+            st.caption("Volume Selecionado")
+            st.markdown(f"### {total_leads:,}".replace(",", "."))
+            st.markdown(f"**Categoria: {resumo_preco['nivel']}**")
 
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Leads Selecionados", f"{total_leads:,}".replace(",", "."))
-        with col2:
-            st.metric("Preço por Lead", fmt_real(resumo_preco['unitario']))
-        with col3:
-            # Preço riscado + Preço real
-            st.markdown(f"""
-            <p style="margin-bottom: -5px; font-size: 14px; color: #ff4b4b; text-decoration: line-through;">
-                {fmt_real(resumo_preco['total_tabela'])}
-            </p>
-            <p style="font-size: 26px; font-weight: bold; color: #2ecc71; margin: 0;">
-                {fmt_real(resumo_preco['total'])}
-            </p>
-            """, unsafe_allow_html=True)
+        with c2:
+            st.caption("Preço Unitário Aplicado")
+            # Valor atual grande
+            st.markdown(f"### {fmt_real(resumo_preco['unitario'])}")
+        
+        with c3:
             st.caption("Total a Pagar")
-        with col4:
-            if resumo_preco['off'] > 0:
-                st.metric("Você Economiza", f"{resumo_preco['off']}%", delta=fmt_real(resumo_preco['economia']))
-            else:
-                st.metric("Status", "Tabela Cheia")
+            st.markdown(f"<h3 style='color:#2ecc71'>{fmt_real(resumo_preco['total'])}</h3>", unsafe_allow_html=True)
 
-        # Barra de Progresso
-        if resumo_preco['prox']:
-            faltam = resumo_preco['prox'] - total_leads
-            progresso = min(total_leads / resumo_preco['prox'], 1.0)
+        # Lógica de Incentivo (Barra de Progresso)
+        if resumo_preco['prox_qtd']:
+            faltam = resumo_preco['prox_qtd'] - total_leads
+            prox_preco = resumo_preco['prox_preco']
+            
+            # Cálculo de % de economia se pular de nível
+            economia_pct = int(((resumo_preco['unitario'] - prox_preco) / resumo_preco['unitario']) * 100)
+            
+            # Ajuste da barra
+            meta = resumo_preco['prox_qtd']
+            progresso = min(total_leads / meta, 0.95)
+
+            st.write("") 
             st.progress(progresso)
-            st.caption(f"💡 Adicione mais **{faltam} leads** para desbloquear o próximo desconto!")
+            st.info(f"💡 Falta pouco! Adicione mais **{faltam} leads** para baixar o preço para **{fmt_real(prox_preco)}/unid** (Economia de {economia_pct}%).")
+
 else:
     st.divider()
     st.warning("⚠️ Utilize os filtros acima para selecionar os leads que deseja comprar.")
