@@ -12,9 +12,9 @@ import os
 st.set_page_config(page_title="DiskLeads", layout="wide", page_icon="🚀")
 
 try:
-    SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets["supabase"]["url"]
-    SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets["supabase"]["key"]
-    MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN") or st.secrets["mercado_pago"]["access_token"]
+    SUPABASE_URL = st.secrets["supabase"]["url"]
+    SUPABASE_KEY =  st.secrets["supabase"]["key"]
+    MP_ACCESS_TOKEN = st.secrets["mercado_pago"]["access_token"]
     NOME_MARCA = "DiskLeads"
 except Exception as e:
     st.error("Erro: Credenciais não configuradas.")
