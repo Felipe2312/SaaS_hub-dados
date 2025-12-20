@@ -160,7 +160,12 @@ else:
                 nome_arquivo = f"{st.session_state.ref_venda}.xlsx"
                 
                 # Upload para o Supabase Storage
-                supabase.storage.from_('leads_pedidos').upload(nome_arquivo, output_file.getvalue())
+                # Upload para o Supabase Storage com permissão de sobrescrever (upsert)
+                supabase.storage.from_('leads_pedidos').upload(
+                    path=nome_arquivo, 
+                    file=output_file.getvalue(), 
+                    file_options={"x-upsert": "true", "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+                )
                 url_publica = supabase.storage.from_('leads_pedidos').get_public_url(nome_arquivo)
 
                 # 2. Salvar venda no Banco (Pendente)
