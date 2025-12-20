@@ -153,8 +153,8 @@ with st.expander("ℹ️ **O que eu vou receber e quanto custa?**", expanded=Fal
         st.markdown("""
         * ✅ **Nome da Empresa** e **Qtd. Avaliações**
         * ✅ **Telefone** (Móvel ou Misto) + **Link WhatsApp**
-        * ✅ **Endereço Completo** (Rua, Bairro, Cidade, UF)
-        * ✅ **Website** e Link do Google Maps
+        * ✅ **Endereço Completo** 
+        * ✅ **Website** 
         * ✅ **Data de Atualização** (Dados Recentes)
         """)
     with c_info2:
