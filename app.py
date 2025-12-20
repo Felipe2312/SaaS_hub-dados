@@ -7,80 +7,67 @@ import time
 import os
 
 # ==========================================
-# 🔐 CONFIGURAÇÕES E CREDENCIAIS
+# 🔐 CONFIGURAÇÕES
 # ==========================================
+st.set_page_config(page_title="DiskLeads", layout="wide", page_icon="🚀")
+
 try:
     SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets["supabase"]["url"]
     SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets["supabase"]["key"]
     MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN") or st.secrets["mercado_pago"]["access_token"]
     NOME_MARCA = "DiskLeads"
 except Exception as e:
-    st.error("Erro: Verifique se todos os secrets ou variáveis de ambiente estão configurados.")
+    st.error("Erro: Credenciais não configuradas.")
     st.stop()
 
-# Inicialização dos clientes
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 SDK = mercadopago.SDK(MP_ACCESS_TOKEN)
 
 # ==========================================
-# 🧠 FUNÇÕES DE SUPORTE
+# 🧠 FUNÇÕES
 # ==========================================
-
 def normalizar_categoria(cat_google):
     if not cat_google: return "Outros"
     cat = str(cat_google).lower()
     if any(x in cat for x in ['natural', 'suplemento', 'academia', 'fit']): return "Saúde & Fitness"
-    if any(x in cat for x in ['restaurante', 'pizzaria', 'hamburgueria', 'lanchonete']): return "Alimentação"
-    if any(x in cat for x in ['médic', 'clinica', 'saúde']): return "Clínicas & Saúde"
-    if any(x in cat for x in ['oficina', 'mecânic', 'auto']): return "Automotivo"
-    if any(x in cat for x in ['advoga', 'jurídic']): return "Jurídico"
-    if any(x in cat for x in ['loja', 'varejo', 'comércio']): return "Varejo & Comércio"
+    if any(x in cat for x in ['restaurante', 'pizzaria', 'hamburgueria', 'lanchonete', 'padaria']): return "Alimentação"
+    if any(x in cat for x in ['médic', 'clinica', 'saúde', 'hospital', 'dentista']): return "Clínicas & Saúde"
+    if any(x in cat for x in ['oficina', 'mecânic', 'auto', 'carro']): return "Automotivo"
+    if any(x in cat for x in ['advoga', 'jurídic', 'lei', 'contabilidade']): return "Jurídico & Escritórios"
+    if any(x in cat for x in ['loja', 'varejo', 'comércio', 'moda', 'vestuário']): return "Varejo & Comércio"
+    if any(x in cat for x in ['imobili', 'construtor', 'engenharia', 'reforma']): return "Construção & Imóveis"
     return "Outros"
 
 def fmt_real(valor):
-    """Formata float para moeda brasileira R$ 1.234,56"""
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def calcular_preco(qtd):
-    """Calcula preço baseado em Tiers com ancoragem no preço base"""
-    PRECO_BASE = 0.35 # Preço de entrada para comparação de desconto
-
+    PRECO_BASE = 0.35 
     tabela = [
         {"limite": 200, "preco": 0.35, "nome": "Básico"},
         {"limite": 1000, "preco": 0.25, "nome": "Profissional"},
         {"limite": 5000, "preco": 0.15, "nome": "Business"},
         {"limite": float('inf'), "preco": 0.08, "nome": "Enterprise"}
     ]
-
     faixa_atual = None
     prox_faixa_info = None
 
     for i, faixa in enumerate(tabela):
         if qtd <= faixa["limite"]:
             faixa_atual = faixa
-            # Verifica se existe uma próxima faixa
             if i + 1 < len(tabela):
                 proxima = tabela[i+1]
-                # O objetivo é passar do limite ATUAL (+1) para cair na próxima
-                prox_faixa_info = {
-                    "meta": faixa["limite"] + 1,
-                    "preco": proxima["preco"]
-                }
+                prox_faixa_info = {"meta": faixa["limite"] + 1, "preco": proxima["preco"]}
             break
     
-    # Se estourar a última faixa
-    if not faixa_atual:
-        faixa_atual = tabela[-1]
+    if not faixa_atual: faixa_atual = tabela[-1]
 
     preco_unitario = faixa_atual["preco"]
     valor_total = qtd * preco_unitario
     
-    # Cálculo da Ancoragem (Preço sem desconto de volume)
-    # Compara sempre com o preço base de 0.35 (ou 0.50 se for muito pequeno)
     preco_ancora_ref = 0.50 if qtd < 50 else 0.35
     valor_ancora = qtd * preco_ancora_ref
     
-    # Percentual Total de Economia
     pct_economia_total = 0
     if valor_ancora > 0:
         pct_economia_total = int(((valor_ancora - valor_total) / valor_ancora) * 100)
@@ -109,9 +96,7 @@ def get_all_data():
     
     df = pd.DataFrame(all_rows)
     if not df.empty:
-        df['nota'] = pd.to_numeric(df['nota'].str.replace(',', '.'), errors='coerce').fillna(0)
-        if 'data_extracao' in df.columns:
-            df['data_extracao'] = pd.to_datetime(df['data_extracao'], errors='coerce').dt.strftime('%d/%m/%Y')
+        df['nota'] = pd.to_numeric(df['nota'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
         df['bairro'] = df['bairro'].fillna('Não informado')
         df['estado'] = df['estado'].fillna('N/A')
         df['categoria_google'] = df['categoria_google'].fillna('Não identificada')
@@ -119,19 +104,60 @@ def get_all_data():
     return df
 
 # ==========================================
-# 🖥️ INTERFACE E FILTROS
+# 🖥️ INTERFACE E HEADER
 # ==========================================
-st.set_page_config(page_title=NOME_MARCA, layout="wide", page_icon="📈")
 df_raw = get_all_data()
 
 st.title(f"🚀 {NOME_MARCA}")
-st.caption("A plataforma mais rápida para extrair contatos B2B qualificados.")
+st.markdown("### A plataforma de inteligência de dados locais.")
+st.caption("Enriqueça seu CRM com dados públicos, atualizados e validados do Google Maps.")
 
+# --- NOVO BLOCO: COMO FUNCIONA & EXEMPLO DE DADOS ---
+with st.expander("ℹ️ **O que eu vou receber? (Veja um Exemplo)**", expanded=False):
+    c_info1, c_info2 = st.columns([1, 1])
+    
+    with c_info1:
+        st.markdown("""
+        #### 📦 O que vem na planilha?
+        Você receberá um arquivo **Excel (.xlsx)** contendo as seguintes colunas para cada empresa encontrada:
+        
+        * ✅ **Nome da Empresa**
+        * ✅ **Telefone** (Fixo ou Celular/WhatsApp se disponível)
+        * ✅ **Endereço Completo** (Rua, Bairro, Cidade, UF, CEP)
+        * ✅ **Website** (Se a empresa tiver)
+        * ✅ **Avaliação (Nota)** e Nº de Avaliações
+        * ✅ **Categoria** e Nicho de Atuação
+        * ✅ **E-mails** (*Atenção: Apenas se estiver público na ficha*)
+        * ✅ **Link direto** para o Google Maps
+        """)
+        st.info("💡 **Dica:** Dados perfeitos para prospecção via **WhatsApp, Cold Call e Tráfego Pago** (Público de Lista).")
+
+    with c_info2:
+        st.markdown("#### 📄 Prévia Visual dos Dados")
+        # Cria um DataFrame falso bonitinho para ilustrar
+        df_exemplo = pd.DataFrame({
+            "Empresa": ["Padaria Pão Dourado", "Academia Force"],
+            "Telefone": ["(11) 99999-1234", "(21) 3344-5566"],
+            "Cidade": ["São Paulo", "Rio de Janeiro"],
+            "Bairro": ["Vila Madalena", "Copacabana"],
+            "Nota": ["4.8 ⭐", "5.0 ⭐"],
+            "Site": ["paodourado.com.br", "instagram.com/force"],
+            "Email": ["contato@paodourado.com", "---"]
+        })
+        st.dataframe(df_exemplo, hide_index=True, use_container_width=True)
+        st.caption("*Exemplo ilustrativo. Os dados reais dependem do preenchimento público da empresa no Google.")
+
+st.divider()
+
+# ==========================================
+# 🔍 FILTROS
+# ==========================================
 with st.container(border=True):
+    st.subheader("🛠️ Configure sua Lista")
     c1, c2, c3 = st.columns([2, 2, 1])
-    with c1: busca_nome = st.text_input("Buscar Empresa", placeholder="Digite o nome...")
-    with c2: nota_range = st.select_slider("Avaliação Google", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
-    with c3: filtro_site = st.radio("Website", ["Todos", "Sim", "Não"], horizontal=True)
+    with c1: busca_nome = st.text_input("Buscar por Nome (Opcional)", placeholder="Ex: Silva...")
+    with c2: nota_range = st.select_slider("Qualidade Mínima (Nota Google)", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
+    with c3: filtro_site = st.radio("Tem Site/Insta?", ["Todos", "Sim", "Não"], horizontal=True)
 
     t1, t2 = st.tabs(["🎯 Segmentação", "📍 Localização"])
     
@@ -164,7 +190,7 @@ with st.container(border=True):
 df_f = df_bai[df_bai['bairro'].isin(f_bairro)] if f_bairro else df_bai
 
 # ==========================================
-# 💲 PRECIFICAÇÃO & CARRINHO (CORRIGIDO)
+# 💲 PRECIFICAÇÃO (FINAL)
 # ==========================================
 total_leads = len(df_f)
 resumo_preco = calcular_preco(total_leads)
@@ -173,23 +199,12 @@ valor_total = round(resumo_preco['total'], 2)
 if total_leads > 0:
     st.divider()
     
-    with st.expander("ℹ️ Ver Tabela de Descontos por Volume", expanded=False):
-        st.markdown("""
-        | Quantidade | Preço/Lead | Categoria |
-        | :--- | :--- | :--- |
-        | Até 200 | **R$ 0,35** | Básico |
-        | 201 a 1.000 | **R$ 0,25** | Profissional |
-        | 1.001 a 5.000 | **R$ 0,15** | Business |
-        | + 5.000 | **R$ 0,08** | Enterprise |
-        """)
-
     with st.container(border=True):
         c1, c2, c3 = st.columns([1, 1, 1])
         
         with c1:
-            st.caption("Volume")
+            st.caption("Volume Selecionado")
             st.markdown(f"### {total_leads:,}".replace(",", "."))
-            # Badge de Nível
             cor_badge = "#FFD700" if resumo_preco['nivel'] == "Ouro" else ("#C0C0C0" if resumo_preco['nivel'] == "Prata" else "#CD7F32")
             st.markdown(f"<span style='background-color:{cor_badge}; color:black; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:bold;'>{resumo_preco['nivel'].upper()}</span>", unsafe_allow_html=True)
 
@@ -199,7 +214,6 @@ if total_leads > 0:
         
         with c3:
             st.caption("Total a Pagar")
-            # Preço Riscado (Ancoragem)
             if resumo_preco['pct_off'] > 0:
                  st.markdown(f"""
                 <div style="display: flex; align-items: center; gap: 10px;">
@@ -211,22 +225,14 @@ if total_leads > 0:
                     </span>
                 </div>
                 """, unsafe_allow_html=True)
-            
-            # Preço Final Verde
             st.markdown(f"<h3 style='color:#2ecc71; margin-top:0px'>{fmt_real(resumo_preco['total'])}</h3>", unsafe_allow_html=True)
 
-        # Barra de Progresso Inteligente
         if resumo_preco['prox_qtd']:
             meta = resumo_preco['prox_qtd']
             faltam = meta - total_leads
             prox_preco = resumo_preco['prox_preco']
-            
-            # Cálculo de % para o próximo nível (incentivo marginal)
             economia_extra_pct = int(((resumo_preco['unitario'] - prox_preco) / resumo_preco['unitario']) * 100)
             
-            # Lógica visual da barra (Evita divisão por zero ou barras negativas)
-            # A barra começa no inicio da faixa atual e termina no inicio da proxima
-            faixa_anterior_limite = 0 # Simplificação visual
             progresso = min(total_leads / meta, 0.98) 
 
             st.write("") 
@@ -240,12 +246,11 @@ else:
 st.divider()
 
 # ==========================================
-# 💰 LÓGICA DE PAGAMENTO
+# 💰 PAGAMENTO
 # ==========================================
 if 'ref_venda' not in st.session_state:
     st.session_state.ref_venda = f"REF_{int(time.time())}"
 
-# Verifica status
 check_banco = supabase.table("vendas").select("*").eq("external_reference", st.session_state.ref_venda).execute()
 dados_venda = check_banco.data[0] if check_banco.data else None
 pago = True if (dados_venda and dados_venda['status'] == 'pago') else False
@@ -284,7 +289,6 @@ else:
                 )
                 url_publica = supabase.storage.from_('leads_pedidos').get_public_url(nome_arquivo)
 
-                # Salva Filtros para o Robô Local
                 filtros_cliente = {
                     "setor": f_macro,
                     "nicho": f_google,
@@ -299,11 +303,11 @@ else:
                     "email_cliente": email_input,
                     "url_arquivo": url_publica,
                     "enviado": False,
-                    # "filtros_json": filtros_cliente 
+                    "filtros_json": filtros_cliente
                 }).execute()
 
                 pref_data = {
-                    "items": [{"title": f"Base {total_leads} Leads - {NOME_MARCA}", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
+                    "items": [{"title": f"Pacote {total_leads} Leads - {NOME_MARCA}", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
                     "external_reference": st.session_state.ref_venda,
                     "back_urls": {"success": "https://leads-brasil.streamlit.app/"},
                     "auto_return": "approved",
@@ -330,9 +334,9 @@ else:
                             status.update(label="✅ Pago!", state="complete")
                             st.rerun()
 
-# --- ANÁLISE VISUAL ---
+# --- RODAPÉ ---
 if not df_f.empty:
-    st.subheader("📊 Raio-X da Base Selecionada")
+    st.subheader("📊 Raio-X da Base")
     g1, g2, g3 = st.columns(3)
     with g1:
         st.write("**Top Cidades**")
@@ -341,10 +345,11 @@ if not df_f.empty:
         st.write("**Top Bairros**")
         st.bar_chart(df_f['bairro'].value_counts().head(10), color="#2ecc71", horizontal=True)
     with g3:
-        st.write("**Setores**")
+        st.write("**Segmentos**")
         st.bar_chart(df_f['Segmento'].value_counts(), color="#f39c12", horizontal=True)
 
-st.subheader("📋 Amostra dos Dados (Top 50)")
-colunas_exibicao = {'nome': 'Empresa', 'Segmento': 'Setor', 'categoria_google': 'Nicho', 'bairro': 'Bairro', 'cidade': 'Cidade', 'estado': 'UF', 'nota': 'Nota'}
-cols_exists = [c for c in colunas_exibicao.keys() if c in df_f.columns]
-st.dataframe(df_f[cols_exists].rename(columns=colunas_exibicao).head(50), use_container_width=True, hide_index=True)
+    st.subheader("📋 Amostra dos Dados (Top 50)")
+    colunas_exibicao = {'nome': 'Empresa', 'Segmento': 'Setor', 'categoria_google': 'Nicho', 'bairro': 'Bairro', 'cidade': 'Cidade', 'estado': 'UF', 'nota': 'Nota'}
+    cols_exists = [c for c in colunas_exibicao.keys() if c in df_f.columns]
+    st.dataframe(df_f[cols_exists].rename(columns=colunas_exibicao).head(50), use_container_width=True, hide_index=True)
+    
