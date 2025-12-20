@@ -21,16 +21,30 @@ try:
     GMAIL_PASS = st.secrets["gmail"]["password"]
     NOME_MARCA = "DiskLeads" 
 except Exception as e:
-    st.error("Erro: Verifique os Secrets no painel do Streamlit.")
+    st.error("Erro: Verifique os Secrets no painel do Streamlit (Mercado Pago, Supabase e Gmail).")
     st.stop()
 
 SDK = mercadopago.SDK(ACCESS_TOKEN)
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ==========================================
-# 📧 FUNÇÃO DE ENVIO DE E-MAIL
+# 🧠 FUNÇÕES DE SUPORTE (DEFINIDAS PRIMEIRO)
 # ==========================================
+
+def normalizar_categoria(cat_google):
+    """Classifica as categorias do Google em segmentos macro."""
+    if not cat_google: return "Outros"
+    cat = str(cat_google).lower()
+    if any(x in cat for x in ['natural', 'suplemento', 'academia', 'fit']): return "Saúde & Fitness"
+    if any(x in cat for x in ['restaurante', 'pizzaria', 'hamburgueria', 'lanchonete']): return "Alimentação"
+    if any(x in cat for x in ['médic', 'clinica', 'saúde']): return "Clínicas & Saúde"
+    if any(x in cat for x in ['oficina', 'mecânic', 'auto']): return "Automotivo"
+    if any(x in cat for x in ['advoga', 'jurídic']): return "Jurídico"
+    if any(x in cat for x in ['loja', 'varejo', 'comércio']): return "Varejo & Comércio"
+    return "Outros"
+
 def enviar_email_com_anexo(destinatario, df_leads, ref_venda):
+    """Envia o arquivo Excel via Gmail SMTP."""
     try:
         msg = MIMEMultipart()
         msg['From'] = f"{NOME_MARCA} <{GMAIL_USER}>"
@@ -73,14 +87,12 @@ def enviar_email_com_anexo(destinatario, df_leads, ref_venda):
         server.send_message(msg)
         server.quit()
         return True
-    except Exception as e:
+    except Exception:
         return False
 
-# ==========================================
-# 🧠 BUSCA E TRATAMENTO DE DADOS
-# ==========================================
 @st.cache_data(ttl=600)
 def get_all_data():
+    """Busca dados no Supabase e aplica tratamentos iniciais."""
     all_rows = []
     step = 1000
     start = 0
@@ -90,18 +102,24 @@ def get_all_data():
         all_rows.extend(rows)
         if len(rows) < step: break
         start += step
+    
     df = pd.DataFrame(all_rows)
     if not df.empty:
+        # Garante que a coluna de categoria existe para não quebrar a normalização
+        if 'categoria_google' not in df.columns:
+            df['categoria_google'] = 'Não identificada'
+        
         df['nota'] = pd.to_numeric(df['nota'].str.replace(',', '.'), errors='coerce').fillna(0)
         df['data_extracao'] = pd.to_datetime(df['data_extracao'], errors='coerce').dt.strftime('%d/%m/%Y')
         df['bairro'] = df['bairro'].fillna('Não informado')
         df['estado'] = df['estado'].fillna('N/A')
-        df['categoria_google'] = df['categoria_google'].fillna('Não identificada')
+        
+        # Chama a função normalizar_categoria (que agora está definida acima)
         df['Segmento'] = df['categoria_google'].apply(normalizar_categoria)
     return df
 
 # ==========================================
-# 🖥️ INTERFACE E FILTROS
+# 🖥️ INTERFACE E FLUXO PRINCIPAL
 # ==========================================
 st.set_page_config(page_title=NOME_MARCA, layout="wide", page_icon="📈")
 df_raw = get_all_data()
@@ -109,7 +127,7 @@ df_raw = get_all_data()
 st.title(f"🚀 {NOME_MARCA}")
 st.caption("A plataforma mais rápida para extrair contatos B2B do Google Maps.")
 
-# --- LÓGICA DE FILTRAGEM ---
+# --- FILTROS ---
 with st.container(border=True):
     c1, c2, c3 = st.columns([2, 2, 1])
     with c1: busca_nome = st.text_input("Empresa", placeholder="Buscar por nome...")
@@ -118,7 +136,6 @@ with st.container(border=True):
 
     t1, t2 = st.tabs(["🎯 Segmentação", "📍 Localização"])
     
-    # Base inicial para os filtros
     df_temp = df_raw.copy()
     if busca_nome: df_temp = df_temp[df_temp['nome'].str.contains(busca_nome, case=False, na=False)]
     if filtro_site == "Sim": df_temp = df_temp[df_temp['site'].notnull()]
@@ -128,7 +145,6 @@ with st.container(border=True):
     with t1:
         col_a, col_b = st.columns(2)
         with col_a:
-            # Proteção: Garante que a coluna existe antes de listar
             opcoes_macro = sorted(df_temp['Segmento'].unique()) if 'Segmento' in df_temp.columns else []
             f_macro = st.multiselect("Setor Principal", opcoes_macro)
         with col_b:
@@ -151,7 +167,6 @@ with st.container(border=True):
             opcoes_bai = sorted(df_bai['bairro'].unique()) if 'bairro' in df_bai.columns else []
             f_bairro = st.multiselect("Bairro", opcoes_bai)
 
-# Resultado Final
 df_f = df_bai[df_bai['bairro'].isin(f_bairro)] if f_bairro else df_bai
 
 # --- MÉTRICAS ---
@@ -248,6 +263,5 @@ if not df_f.empty:
 
 st.subheader("📋 Amostra dos Dados")
 colunas_exibicao = {'nome': 'Empresa', 'Segmento': 'Setor', 'bairro': 'Bairro', 'cidade': 'Cidade', 'nota': 'Nota', 'data_extracao': 'Atualização'}
-# Filtra apenas as colunas que realmente existem no df_f para evitar o KeyError final
 cols_to_show = [c for c in colunas_exibicao.keys() if c in df_f.columns]
 st.dataframe(df_f[cols_to_show].rename(columns=colunas_exibicao).head(50), use_container_width=True, hide_index=True)
