@@ -121,7 +121,7 @@ with st.expander("ℹ️ **O que eu vou receber? (Detalhes dos Dados)**", expand
         #### 📦 Conteúdo do Arquivo
         Você receberá um arquivo **Excel** contendo:
         * ✅ **Nome da Empresa**
-        * ✅ **Telefone** (Misto: Linhas Fixas e Celulares/WhatsApp)
+        * ✅ **Telefone** (Celulares/WhatsApp)
         * ✅ **Endereço Completo** (Rua, Bairro, Cidade, UF, CEP)
         * ✅ **Website** e Link do Google Maps
         * ✅ **Avaliação** e Nicho de Atuação
