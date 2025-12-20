@@ -45,23 +45,14 @@ def fmt_real(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def classificar_telefone_global(tel):
-    """
-    Classifica o telefone e filtra lixo (DDD iniciando com 0).
-    """
+    """Classifica o telefone e filtra lixo."""
     if not tel: return "Outro"
     nums = "".join(filter(str.isdigit, str(tel)))
     
-    # Se começar com 55 (Padrão Scraper)
     if nums.startswith("55"):
-        # Regra de Ouro: O 3º dígito (primeiro do DDD) NÃO pode ser 0.
         if len(nums) > 2 and nums[2] == '0': return "Outro"
-
-        # 13 dígitos = Celular (55 + 2 + 9 + 8)
         if len(nums) == 13 and nums[4] == '9': return "Celular"
-        # 12 dígitos = Fixo (55 + 2 + 8)
         elif len(nums) == 12: return "Fixo"
-    
-    # Fallback (sem 55)
     else:
         if nums.startswith("0"): return "Outro"
         if len(nums) == 11 and nums[2] == '9': return "Celular"
@@ -130,17 +121,15 @@ def get_all_data():
         df['categoria_google'] = df['categoria_google'].fillna('Não identificada')
         df['Segmento'] = df['categoria_google'].apply(normalizar_categoria)
         
-        # --- TRATAMENTO DE DATA (dd/mm/aaaa) ---
         if 'data_extracao' in df.columns:
             df['data_temp'] = pd.to_datetime(df['data_extracao'], errors='coerce')
             df['Data Atualização'] = df['data_temp'].dt.strftime('%d/%m/%Y').fillna('Recente')
         else:
             df['Data Atualização'] = datetime.today().strftime('%d/%m/%Y')
 
-        # 1. Classifica Telefones
         df['tipo_contato'] = df['telefone'].apply(classificar_telefone_global)
         
-        # 2. FILTRO DE QUALIDADE (Limpeza de Lixo)
+        # Filtro de Qualidade (Remove Lixo)
         df = df[df['tipo_contato'].isin(['Celular', 'Fixo'])]
         
     return df
@@ -257,11 +246,9 @@ if not filtros_ativos:
     if 'Data Atualização' in df_raw.columns and not df_raw.empty:
         ultima_data = df_raw['Data Atualização'].max()
         st.caption(f"📅 Base atualizada até: **{ultima_data}**")
-        
     st.markdown("---")
 
 else:
-    # 1. Precificação
     total_leads = len(df_f)
     resumo_preco = calcular_preco(total_leads)
     valor_total = round(resumo_preco['total'], 2)
@@ -270,7 +257,6 @@ else:
 
     if total_leads == 0:
         st.warning("⚠️ Nenhum lead encontrado com essa combinação exata de filtros.")
-        st.markdown("**Dica:** Tente relaxar os filtros de Bairro ou Nicho.")
     else:
         # Bloco de Preço Visual
         with st.container(border=True):
@@ -280,8 +266,7 @@ else:
                 st.markdown(f"### {total_leads:,}".replace(",", "."))
                 cor_badge = "#FFD700" if resumo_preco['nivel'] == "Ouro" else ("#C0C0C0" if resumo_preco['nivel'] == "Prata" else "#CD7F32")
                 st.markdown(f"<span style='background-color:{cor_badge}; color:black; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:bold;'>{resumo_preco['nivel'].upper()}</span>", unsafe_allow_html=True)
-                if filtro_tel != "Todos":
-                    st.caption(f"Filtro: {filtro_tel}")
+                if filtro_tel != "Todos": st.caption(f"Filtro: {filtro_tel}")
             with c2:
                 st.caption("Preço Unitário")
                 st.markdown(f"### {fmt_real(resumo_preco['unitario'])}")
@@ -344,12 +329,13 @@ else:
                 if st.button("💳 IR PARA PAGAMENTO SEGURO", type="primary", use_container_width=True, disabled=not pode_prosseguir):
                     
                     # === CRIAÇÃO E HIGIENIZAÇÃO DO EXCEL ===
+                    # 1. Copia o DF filtrado
                     df_export = df_f.copy()
 
+                    # 2. Gera o Link WhatsApp
                     def gerar_link_wpp(row):
                         tel = str(row.get('telefone', ''))
                         tipo = str(row.get('tipo_contato', ''))
-                        
                         if tipo == "Celular": 
                             nums = "".join(filter(str.isdigit, tel))
                             if not nums.startswith("55"): nums = f"55{nums}"
@@ -358,37 +344,39 @@ else:
 
                     df_export['Link WhatsApp'] = df_export.apply(gerar_link_wpp, axis=1)
 
-                    # MAPEAMENTO DE COLUNAS (ORDEM E NOME FINAL)
-                    # Adicionei 'tipo_contato' -> 'Tipo de Telefone'
-                    colunas_desejadas = {
+                    # 3. DEFINE A ORDEM E O NOME DAS COLUNAS (WHITELIST)
+                    # Se não estiver aqui, não vai pro Excel.
+                    colunas_finais = {
                         'nome': 'Empresa',
                         'telefone': 'Telefone',
-                        'tipo_contato': 'Tipo de Telefone', # <--- AQUI!
+                        'tipo_contato': 'Tipo de Telefone', # Coluna que faltava
                         'Link WhatsApp': 'Link WhatsApp',
                         'Data Atualização': 'Atualizado em',
                         'Segmento': 'Setor',
                         'categoria_google': 'Nicho',
                         'nota': 'Nota Google',
                         'site': 'Site',
-                        'endereco_completo': 'Endereço Completo',
+                        'endereco': 'Endereço',
                         'bairro': 'Bairro',
                         'cidade': 'Cidade',
                         'estado': 'UF'
                     }
 
-                    # Filtra só o que existe e renomeia
-                    cols_para_exportar = [c for c in colunas_desejadas.keys() if c in df_export.columns]
-                    df_export = df_export[cols_para_exportar].rename(columns=colunas_desejadas)
+                    # 4. Filtra e Renomeia
+                    cols_presentes = [c for c in colunas_finais.keys() if c in df_export.columns]
+                    df_export = df_export[cols_presentes].rename(columns=colunas_finais)
 
+                    # 5. Gera o Arquivo
                     output_file = io.BytesIO()
                     with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
                         df_export.to_excel(writer, index=False, sheet_name='Leads')
                         worksheet = writer.sheets['Leads']
-                        # Ajuste de larguras para leitura fácil
+                        # Formatação
                         worksheet.set_column('A:A', 30) # Empresa
-                        worksheet.set_column('B:C', 18) # Telefone e Tipo
+                        worksheet.set_column('B:C', 15) # Tel e Tipo
                         worksheet.set_column('D:D', 25) # Link
                         worksheet.set_column('E:E', 12) # Data
+                        worksheet.set_column('J:J', 35) # Endereço
 
                     nome_arquivo = f"{st.session_state.ref_venda}.xlsx"
                     
@@ -455,7 +443,6 @@ else:
     if 'telefone' in df_preview.columns:
         df_preview['telefone'] = df_preview['telefone'].apply(lambda x: str(x)[:-4] + "****" if x and len(str(x)) > 4 else "****")
 
-    # Mapeamento para visualização no site (Amostra Grátis)
     colunas_visual = {
         'nome': 'Empresa', 
         'tipo_contato': 'Tipo', 
