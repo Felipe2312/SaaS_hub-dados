@@ -112,40 +112,39 @@ st.title(f"🚀 {NOME_MARCA}")
 st.markdown("### A plataforma de inteligência de dados locais.")
 st.caption("Enriqueça seu CRM com dados públicos, atualizados e validados do Google Maps.")
 
-# --- NOVO BLOCO: COMO FUNCIONA & EXEMPLO DE DADOS ---
+# --- NOVO BLOCO: O QUE VEM NA LISTA (SEM EMAIL) ---
 with st.expander("ℹ️ **O que eu vou receber? (Veja um Exemplo)**", expanded=False):
     c_info1, c_info2 = st.columns([1, 1])
     
     with c_info1:
         st.markdown("""
         #### 📦 O que vem na planilha?
-        Você receberá um arquivo **Excel (.xlsx)** contendo as seguintes colunas para cada empresa encontrada:
+        Você receberá um arquivo **Excel (.xlsx)** pronto para importar no seu CRM ou discador, contendo:
         
         * ✅ **Nome da Empresa**
-        * ✅ **Telefone** (Fixo ou Celular/WhatsApp se disponível)
+        * ✅ **Celular**    
         * ✅ **Endereço Completo** (Rua, Bairro, Cidade, UF, CEP)
-        * ✅ **Website** (Se a empresa tiver)
-        * ✅ **Avaliação (Nota)** e Nº de Avaliações
+        * ✅ **Website** (Link direto para o site da empresa)
+        * ✅ **Avaliação (Nota)** e Quantidade de Avaliações
         * ✅ **Categoria** e Nicho de Atuação
-        * ✅ **E-mails** (*Atenção: Apenas se estiver público na ficha*)
-        * ✅ **Link direto** para o Google Maps
+        * ✅ **Link direto** para a localização no Google Maps
         """)
-        st.info("💡 **Dica:** Dados perfeitos para prospecção via **WhatsApp, Cold Call e Tráfego Pago** (Público de Lista).")
+        st.info("💡 **Ideal para:** Prospecção via **WhatsApp, Cold Call (Ligação Fria)** e visitas presenciais (Porta-a-Porta).")
 
     with c_info2:
         st.markdown("#### 📄 Prévia Visual dos Dados")
-        # Cria um DataFrame falso bonitinho para ilustrar
+        # Exemplo focado em telefone e endereço
         df_exemplo = pd.DataFrame({
-            "Empresa": ["Padaria Pão Dourado", "Academia Force"],
+            "Empresa": ["Padaria Pão Dourado", "Auto Center Silva"],
             "Telefone": ["(11) 99999-1234", "(21) 3344-5566"],
             "Cidade": ["São Paulo", "Rio de Janeiro"],
+            "Categoria":['Padaria','Auto Center'],
             "Bairro": ["Vila Madalena", "Copacabana"],
-            "Nota": ["4.8 ⭐", "5.0 ⭐"],
-            "Site": ["paodourado.com.br", "instagram.com/force"],
-            "Email": ["contato@paodourado.com", "---"]
+            "Nota": ["4.8 ⭐", "4.2 ⭐"],
+            "Site": ["paodourado.com.br", "autocenter.com.br"]
         })
         st.dataframe(df_exemplo, hide_index=True, use_container_width=True)
-        st.caption("*Exemplo ilustrativo. Os dados reais dependem do preenchimento público da empresa no Google.")
+        st.caption("*Dados públicos extraídos do Perfil da Empresa no Google.")
 
 st.divider()
 
@@ -352,4 +351,3 @@ if not df_f.empty:
     colunas_exibicao = {'nome': 'Empresa', 'Segmento': 'Setor', 'categoria_google': 'Nicho', 'bairro': 'Bairro', 'cidade': 'Cidade', 'estado': 'UF', 'nota': 'Nota'}
     cols_exists = [c for c in colunas_exibicao.keys() if c in df_f.columns]
     st.dataframe(df_f[cols_exists].rename(columns=colunas_exibicao).head(50), use_container_width=True, hide_index=True)
-    
