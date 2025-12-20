@@ -112,9 +112,8 @@ def get_all_data():
         # Tratamentos Básicos
         df['nota'] = pd.to_numeric(df['nota'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
         
-        # --- NOVO: TRATAMENTO DE AVALIAÇÕES ---
+        # TRATAMENTO DE AVALIAÇÕES (Inteiro)
         if 'avaliacoes' in df.columns:
-            # Remove pontos de milhar (ex: 1.200 -> 1200) e converte para numero
             df['avaliacoes'] = pd.to_numeric(df['avaliacoes'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0).astype(int)
         else:
             df['avaliacoes'] = 0
@@ -178,8 +177,9 @@ with st.container(border=True):
     
     with c1: busca_nome = st.text_input("Buscar Nome", placeholder="Ex: Silva...")
     with c2: nota_range = st.select_slider("Nota Mínima", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
-    # --- NOVO FILTRO DE AVALIAÇÕES ---
-    with c3: min_avaliacoes = st.slider("Mínimo de Avaliações", 0, 500, 0, step=10, help="Filtre empresas mais populares (com mais reviews)")
+    
+    # --- FILTRO FAIXA DE AVALIAÇÕES (MÍN E MÁX) ---
+    with c3: avaliacoes_range = st.slider("Qtd. Avaliações", 0, 1000, (0, 1000), help="Filtre pela quantidade de reviews")
     
     with c4: filtro_site = st.radio("Site?", ["Todos", "Sim", "Não"], horizontal=True)
     with c5: filtro_tel = st.radio("Telefone", ["Todos", "Só Celular", "Só Fixo"], horizontal=True)
@@ -220,7 +220,9 @@ elif filtro_site == "Não": df_f = df_f[df_f['site'].isnull()]
 
 # Filtros Numéricos
 df_f = df_f[(df_f['nota'] >= nota_range[0]) & (df_f['nota'] <= nota_range[1])]
-df_f = df_f[df_f['avaliacoes'] >= min_avaliacoes] # Aplica filtro de avaliações
+
+# APLICA FAIXA DE AVALIAÇÕES (MIN E MAX)
+df_f = df_f[(df_f['avaliacoes'] >= avaliacoes_range[0]) & (df_f['avaliacoes'] <= avaliacoes_range[1])]
 
 if filtro_tel == "Só Celular": df_f = df_f[df_f['tipo_contato'] == 'Celular']
 elif filtro_tel == "Só Fixo": df_f = df_f[df_f['tipo_contato'] == 'Fixo']
@@ -231,7 +233,10 @@ if f_uf: df_f = df_f[df_f['estado'].isin(f_uf)]
 if f_cidade: df_f = df_f[df_f['cidade'].isin(f_cidade)]
 if f_bairro: df_f = df_f[df_f['bairro'].isin(f_bairro)]
 
-filtros_ativos = any([busca_nome, f_macro, f_google, f_uf, f_cidade, f_bairro, min_avaliacoes > 0])
+# Verifica se o filtro de avaliações foi mexido (diferente do padrão 0-1000)
+filtro_aval_ativo = (avaliacoes_range[0] > 0) or (avaliacoes_range[1] < 1000)
+
+filtros_ativos = any([busca_nome, f_macro, f_google, f_uf, f_cidade, f_bairro, filtro_aval_ativo])
 
 if not filtros_ativos:
     st.info("👆 Selecione um filtro para começar.")
@@ -257,7 +262,7 @@ else:
             with c1:
                 st.caption("Volume")
                 st.markdown(f"### {total_leads:,}".replace(",", "."))
-                if min_avaliacoes > 0: st.caption(f"Min. Avaliações: {min_avaliacoes}")
+                if filtro_aval_ativo: st.caption(f"Avaliações: {avaliacoes_range[0]} a {avaliacoes_range[1]}")
             with c2:
                 st.caption("Preço Unitário")
                 st.markdown(f"### {fmt_real(resumo_preco['unitario'])}")
@@ -277,15 +282,12 @@ else:
         if 'ref_venda' not in st.session_state:
             st.session_state.ref_venda = f"REF_{int(time.time())}"
 
-        # Verifica status no banco
         check_banco = supabase.table("vendas").select("*").eq("external_reference", st.session_state.ref_venda).execute()
         is_pago = check_banco.data and check_banco.data[0]['status'] == 'pago'
 
         if is_pago:
-            # === ÁREA PÓS-VENDA (Sucesso) ===
             st.balloons()
             
-            # Recria o Excel limpo para download imediato
             df_final_down = pd.DataFrame()
             df_final_down['Empresa'] = df_f['nome']
             df_final_down['Telefone'] = df_f['telefone']
@@ -303,7 +305,7 @@ else:
             df_final_down['Setor Principal'] = df_f['Segmento']
             df_final_down['Nicho Específico'] = df_f['categoria_google']
             df_final_down['Nota Google'] = df_f['nota']
-            df_final_down['Qtd Avaliações'] = df_f['avaliacoes'] # <--- NOVA COLUNA
+            df_final_down['Qtd Avaliações'] = df_f['avaliacoes']
             df_final_down['Endereço Completo'] = df_f['endereco_completo']
             df_final_down['Bairro'] = df_f['bairro']
             df_final_down['Cidade'] = df_f['cidade']
@@ -335,7 +337,6 @@ else:
                     st.rerun()
 
         else:
-            # === ÁREA DE CHECKOUT ===
             with st.container(border=True):
                 st.subheader("📬 Finalizar Compra")
                 ce1, ce2 = st.columns(2)
@@ -349,7 +350,6 @@ else:
 
                 if st.button("💳 IR PARA PAGAMENTO SEGURO", type="primary", use_container_width=True, disabled=not pode_prosseguir):
                     
-                    # 💎 CONSTRUÇÃO DO EXCEL LIMPO (METODO CONSTRUTIVO) 💎
                     df_final = pd.DataFrame()
                     
                     df_final['Empresa'] = df_f['nome']
@@ -368,7 +368,7 @@ else:
                     df_final['Setor Principal'] = df_f['Segmento']
                     df_final['Nicho Específico'] = df_f['categoria_google']
                     df_final['Nota Google'] = df_f['nota']
-                    df_final['Qtd Avaliações'] = df_f['avaliacoes'] # <--- NOVA COLUNA
+                    df_final['Qtd Avaliações'] = df_f['avaliacoes']
                     df_final['Endereço Completo'] = df_f['endereco_completo']
                     df_final['Bairro'] = df_f['bairro']
                     df_final['Cidade'] = df_f['cidade']
@@ -415,7 +415,7 @@ else:
                         st.error("Erro no Mercado Pago.")
 
                 if 'link_ativo' in st.session_state:
-                    st.info("🕒 Checkout aberto em nova guia.")
+                    st.info("🕒 Checkout aberto.")
                     st.markdown(f'<div style="text-align:center;"><a href="{st.session_state.link_ativo}" target="_blank"><button style="padding:12px; background-color:#2e66f1; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">ABRIR PAGAMENTO</button></a></div>', unsafe_allow_html=True)
                     
                     with st.status("Aguardando confirmação...") as status:
@@ -444,7 +444,7 @@ else:
     df_preview['Nicho'] = df_f['categoria_google']
     df_preview['Cidade'] = df_f['cidade']
     df_preview['Nota'] = df_f['nota']
-    df_preview['Avaliações'] = df_f['avaliacoes'] # Mostrando na amostra visual também
+    df_preview['Avaliações'] = df_f['avaliacoes']
     df_preview['Atualizado em'] = df_f['data_fmt']
     
     st.dataframe(df_preview.head(50), use_container_width=True, hide_index=True)
