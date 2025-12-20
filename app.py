@@ -251,7 +251,7 @@ else:
                 progresso = min(total_leads / meta, 0.98) 
                 st.write("") 
                 st.progress(progresso)
-                st.info(f"💡 Falta pouco! Adicione apenas **{faltam} leads** para entrar na próxima faixa e pagar **{fmt_real(prox_preco)}/unid** (Redução extra de {economia_extra_pct}% no custo).")
+                st.info(f"Adicione apenas **{faltam} leads** para entrar na próxima faixa e pagar **{fmt_real(prox_preco)}/unid** (Redução extra de {economia_extra_pct}% no custo).")
 
         # 2. Área de Pagamento
         if 'ref_venda' not in st.session_state:
