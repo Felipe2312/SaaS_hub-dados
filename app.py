@@ -130,10 +130,7 @@ with st.expander("ℹ️ **O que eu vou receber? (Veja um Exemplo)**", expanded=
         * ✅ **Link direto** para a localização no Google Maps
         """)
         st.info("💡 **Ideal para:** Prospecção via **WhatsApp, Cold Call (Ligação Fria)** e visitas presenciais (Porta-a-Porta).")
-        st.warning("""
-        ⚠️ **Nota de Transparência:** Como os dados são extraídos de fichas públicas, é natural que uma pequena porcentagem dos telefones esteja desatualizada ou sejam apenas linhas fixas (não possuem WhatsApp). 
-        **Nosso preço baixo já considera essa margem de segurança.**
-        """)
+        
     with c_info2:
         st.markdown("#### 📄 Prévia Visual dos Dados")
         # Exemplo focado em telefone e endereço
@@ -148,6 +145,10 @@ with st.expander("ℹ️ **O que eu vou receber? (Veja um Exemplo)**", expanded=
         })
         st.dataframe(df_exemplo, hide_index=True, use_container_width=True)
         st.caption("*Dados públicos extraídos do Perfil da Empresa no Google.")
+        st.warning("""
+        ⚠️ **Nota de Transparência:** Como os dados são extraídos de fichas públicas, é natural que uma pequena porcentagem dos telefones esteja desatualizada ou sejam apenas linhas fixas (não possuem WhatsApp). 
+        **Nosso preço baixo já considera essa margem de segurança.**
+        """)
 
 st.divider()
 
