@@ -111,6 +111,14 @@ def get_all_data():
     if not df.empty:
         # Tratamentos Básicos
         df['nota'] = pd.to_numeric(df['nota'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+        
+        # --- NOVO: TRATAMENTO DE AVALIAÇÕES ---
+        if 'avaliacoes' in df.columns:
+            # Remove pontos de milhar (ex: 1.200 -> 1200) e converte para numero
+            df['avaliacoes'] = pd.to_numeric(df['avaliacoes'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0).astype(int)
+        else:
+            df['avaliacoes'] = 0
+            
         df['bairro'] = df['bairro'].fillna('Não informado')
         df['estado'] = df['estado'].fillna('N/A')
         if 'categoria_google' not in df.columns: df['categoria_google'] = 'Outros'
@@ -120,14 +128,14 @@ def get_all_data():
         df['Segmento'] = df['categoria_google'].apply(normalizar_categoria)
         df['tipo_contato'] = df['telefone'].apply(classificar_telefone_global)
         
-        # Data de Atualização (Formatada)
+        # Data de Atualização
         if 'data_extracao' in df.columns:
             df['data_obj'] = pd.to_datetime(df['data_extracao'], errors='coerce')
             df['data_fmt'] = df['data_obj'].dt.strftime('%d/%m/%Y').fillna(datetime.today().strftime('%d/%m/%Y'))
         else:
             df['data_fmt'] = datetime.today().strftime('%d/%m/%Y')
         
-        # FILTRO DE QUALIDADE (Remove linhas inúteis antes de qualquer coisa)
+        # FILTRO DE QUALIDADE
         df = df[df['tipo_contato'].isin(['Celular', 'Fixo'])]
         
     return df
@@ -146,11 +154,11 @@ with st.expander("ℹ️ **O que eu vou receber e quanto custa?**", expanded=Fal
     with c_info1:
         st.markdown("#### 📦 O que vem no arquivo?")
         st.markdown("""
-        * ✅ **Nome da Empresa**
-        * ✅ **Telefone** e Link WhatsApp
-        * ✅ **Endereço Completo**
-        * ✅ **Website** e Link Maps
-        * ✅ **Data de Atualização**
+        * ✅ **Nome da Empresa** e **Qtd. Avaliações**
+        * ✅ **Telefone** (Móvel ou Misto) + **Link WhatsApp**
+        * ✅ **Endereço Completo** (Rua, Bairro, Cidade, UF)
+        * ✅ **Website** e Link do Google Maps
+        * ✅ **Data de Atualização** (Dados Recentes)
         """)
     with c_info2:
         st.markdown("#### 💲 Tabela de Preços")
@@ -166,11 +174,15 @@ st.divider()
 # --- FILTROS ---
 with st.container(border=True):
     st.subheader("🛠️ Configure sua Lista")
-    c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
+    c1, c2, c3, c4, c5 = st.columns([2, 1.5, 1.5, 1, 1])
+    
     with c1: busca_nome = st.text_input("Buscar Nome", placeholder="Ex: Silva...")
-    with c2: nota_range = st.select_slider("Nota Google", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
-    with c3: filtro_site = st.radio("Site?", ["Todos", "Sim", "Não"], horizontal=True)
-    with c4: filtro_tel = st.radio("Telefone", ["Todos", "Só Celular", "Só Fixo"], horizontal=True)
+    with c2: nota_range = st.select_slider("Nota Mínima", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
+    # --- NOVO FILTRO DE AVALIAÇÕES ---
+    with c3: min_avaliacoes = st.slider("Mínimo de Avaliações", 0, 500, 0, step=10, help="Filtre empresas mais populares (com mais reviews)")
+    
+    with c4: filtro_site = st.radio("Site?", ["Todos", "Sim", "Não"], horizontal=True)
+    with c5: filtro_tel = st.radio("Telefone", ["Todos", "Só Celular", "Só Fixo"], horizontal=True)
 
     t1, t2 = st.tabs(["🎯 Segmentação", "📍 Localização"])
 
@@ -205,16 +217,21 @@ df_f = df_raw.copy()
 if busca_nome: df_f = df_f[df_f['nome'].str.contains(busca_nome, case=False, na=False)]
 if filtro_site == "Sim": df_f = df_f[df_f['site'].notnull()]
 elif filtro_site == "Não": df_f = df_f[df_f['site'].isnull()]
+
+# Filtros Numéricos
 df_f = df_f[(df_f['nota'] >= nota_range[0]) & (df_f['nota'] <= nota_range[1])]
+df_f = df_f[df_f['avaliacoes'] >= min_avaliacoes] # Aplica filtro de avaliações
+
 if filtro_tel == "Só Celular": df_f = df_f[df_f['tipo_contato'] == 'Celular']
 elif filtro_tel == "Só Fixo": df_f = df_f[df_f['tipo_contato'] == 'Fixo']
+
 if f_macro: df_f = df_f[df_f['Segmento'].isin(f_macro)]
 if f_google: df_f = df_f[df_f['categoria_google'].isin(f_google)]
 if f_uf: df_f = df_f[df_f['estado'].isin(f_uf)]
 if f_cidade: df_f = df_f[df_f['cidade'].isin(f_cidade)]
 if f_bairro: df_f = df_f[df_f['bairro'].isin(f_bairro)]
 
-filtros_ativos = any([busca_nome, f_macro, f_google, f_uf, f_cidade, f_bairro])
+filtros_ativos = any([busca_nome, f_macro, f_google, f_uf, f_cidade, f_bairro, min_avaliacoes > 0])
 
 if not filtros_ativos:
     st.info("👆 Selecione um filtro para começar.")
@@ -240,7 +257,7 @@ else:
             with c1:
                 st.caption("Volume")
                 st.markdown(f"### {total_leads:,}".replace(",", "."))
-                if filtro_tel != "Todos": st.caption(f"Filtro: {filtro_tel}")
+                if min_avaliacoes > 0: st.caption(f"Min. Avaliações: {min_avaliacoes}")
             with c2:
                 st.caption("Preço Unitário")
                 st.markdown(f"### {fmt_real(resumo_preco['unitario'])}")
@@ -254,23 +271,71 @@ else:
                     </div>""", unsafe_allow_html=True)
                 st.markdown(f"<h3 style='color:#2ecc71; margin-top:0px'>{fmt_real(resumo_preco['total'])}</h3>", unsafe_allow_html=True)
 
-        # Pagamento
+        # ==========================================
+        # 💳 PAGAMENTO & DOWNLOAD
+        # ==========================================
         if 'ref_venda' not in st.session_state:
             st.session_state.ref_venda = f"REF_{int(time.time())}"
 
+        # Verifica status no banco
         check_banco = supabase.table("vendas").select("*").eq("external_reference", st.session_state.ref_venda).execute()
-        pago = check_banco.data and check_banco.data[0]['status'] == 'pago'
+        is_pago = check_banco.data and check_banco.data[0]['status'] == 'pago'
 
-        if pago:
+        if is_pago:
+            # === ÁREA PÓS-VENDA (Sucesso) ===
             st.balloons()
-            st.success("✅ Pagamento Confirmado!")
             
-            # Botão Download Pós-Pagamento (Lógica Simplificada para consistência)
-            # Idealmente repetimos a lógica de construção aqui, mas vamos focar no fluxo principal
-            if st.button("🔄 Nova Busca"):
-                st.session_state.clear()
-                st.rerun()
+            # Recria o Excel limpo para download imediato
+            df_final_down = pd.DataFrame()
+            df_final_down['Empresa'] = df_f['nome']
+            df_final_down['Telefone'] = df_f['telefone']
+            df_final_down['Tipo de Telefone'] = df_f['tipo_contato']
+            
+            def gerar_link_down(row):
+                if row['tipo_contato'] == "Celular":
+                    nums = "".join(filter(str.isdigit, str(row['telefone'])))
+                    if not nums.startswith("55"): nums = f"55{nums}"
+                    return f"https://wa.me/{nums}"
+                return ""
+            df_final_down['Link WhatsApp'] = df_f.apply(gerar_link_down, axis=1)
+            
+            df_final_down['Atualizado em'] = df_f['data_fmt']
+            df_final_down['Setor Principal'] = df_f['Segmento']
+            df_final_down['Nicho Específico'] = df_f['categoria_google']
+            df_final_down['Nota Google'] = df_f['nota']
+            df_final_down['Qtd Avaliações'] = df_f['avaliacoes'] # <--- NOVA COLUNA
+            df_final_down['Endereço Completo'] = df_f['endereco_completo']
+            df_final_down['Bairro'] = df_f['bairro']
+            df_final_down['Cidade'] = df_f['cidade']
+            df_final_down['UF'] = df_f['estado']
+            df_final_down['Site'] = df_f['site']
+
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df_final_down.to_excel(writer, index=False, sheet_name='Leads')
+                worksheet = writer.sheets['Leads']
+                worksheet.set_column('A:A', 30)
+                worksheet.set_column('D:D', 25)
+            
+            st.success("✅ Pagamento Confirmado com Sucesso!")
+            
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                st.download_button(
+                    label="💾 BAIXAR PLANILHA AGORA",
+                    data=output.getvalue(),
+                    file_name=f"leads_{st.session_state.ref_venda}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                    use_container_width=True
+                )
+            with col_d2:
+                if st.button("🔄 Fazer Nova Busca", use_container_width=True):
+                    st.session_state.clear()
+                    st.rerun()
+
         else:
+            # === ÁREA DE CHECKOUT ===
             with st.container(border=True):
                 st.subheader("📬 Finalizar Compra")
                 ce1, ce2 = st.columns(2)
@@ -284,20 +349,13 @@ else:
 
                 if st.button("💳 IR PARA PAGAMENTO SEGURO", type="primary", use_container_width=True, disabled=not pode_prosseguir):
                     
-                    # ========================================================
                     # 💎 CONSTRUÇÃO DO EXCEL LIMPO (METODO CONSTRUTIVO) 💎
-                    # ========================================================
-                    # Aqui criamos um novo DataFrame coluna por coluna.
-                    # Isso garante que NENHUMA coluna lixo (id, chave_unica) entre.
-                    
                     df_final = pd.DataFrame()
                     
-                    # 1. Colunas Básicas (Mapeando direto do original)
                     df_final['Empresa'] = df_f['nome']
                     df_final['Telefone'] = df_f['telefone']
                     df_final['Tipo de Telefone'] = df_f['tipo_contato']
                     
-                    # 2. Gerar Link WhatsApp
                     def gerar_link(row):
                         if row['tipo_contato'] == "Celular":
                             nums = "".join(filter(str.isdigit, str(row['telefone'])))
@@ -306,30 +364,24 @@ else:
                         return ""
                     df_final['Link WhatsApp'] = df_f.apply(gerar_link, axis=1)
                     
-                    # 3. Restante das Colunas (Na ordem desejada)
                     df_final['Atualizado em'] = df_f['data_fmt']
                     df_final['Setor Principal'] = df_f['Segmento']
                     df_final['Nicho Específico'] = df_f['categoria_google']
                     df_final['Nota Google'] = df_f['nota']
-                    df_final['Endereço Completo'] = df_f['endereco_completo'] # Usando o nome exato do seu banco
+                    df_final['Qtd Avaliações'] = df_f['avaliacoes'] # <--- NOVA COLUNA
+                    df_final['Endereço Completo'] = df_f['endereco_completo']
                     df_final['Bairro'] = df_f['bairro']
                     df_final['Cidade'] = df_f['cidade']
                     df_final['UF'] = df_f['estado']
                     df_final['Site'] = df_f['site']
 
-                    # 4. Gerar Arquivo
                     output_file = io.BytesIO()
                     with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
                         df_final.to_excel(writer, index=False, sheet_name='Leads')
                         worksheet = writer.sheets['Leads']
-                        # Formatação
-                        worksheet.set_column('A:A', 30) # Empresa
-                        worksheet.set_column('B:C', 16) # Tel/Tipo
-                        worksheet.set_column('D:D', 25) # Link Zap
-                        worksheet.set_column('E:E', 12) # Data
-                        worksheet.set_column('I:I', 40) # Endereço
+                        worksheet.set_column('A:A', 30)
+                        worksheet.set_column('D:D', 25)
 
-                    # Salva no Storage
                     nome_arquivo = f"{st.session_state.ref_venda}.xlsx"
                     supabase.storage.from_('leads_pedidos').upload(
                         path=nome_arquivo, 
@@ -338,7 +390,6 @@ else:
                     )
                     url_publica = supabase.storage.from_('leads_pedidos').get_public_url(nome_arquivo)
 
-                    # Salva Venda
                     supabase.table("vendas").upsert({
                         "external_reference": st.session_state.ref_venda,
                         "valor": valor_total,
@@ -347,7 +398,6 @@ else:
                         "url_arquivo": url_publica
                     }).execute()
 
-                    # Gera Checkout
                     pref_data = {
                         "items": [{"title": f"Base {total_leads} Leads - {NOME_MARCA}", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
                         "external_reference": st.session_state.ref_venda,
@@ -365,7 +415,7 @@ else:
                         st.error("Erro no Mercado Pago.")
 
                 if 'link_ativo' in st.session_state:
-                    st.info("🕒 Checkout aberto.")
+                    st.info("🕒 Checkout aberto em nova guia.")
                     st.markdown(f'<div style="text-align:center;"><a href="{st.session_state.link_ativo}" target="_blank"><button style="padding:12px; background-color:#2e66f1; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">ABRIR PAGAMENTO</button></a></div>', unsafe_allow_html=True)
                     
                     with st.status("Aguardando confirmação...") as status:
@@ -376,7 +426,7 @@ else:
                                 status.update(label="✅ Pago!", state="complete")
                                 st.rerun()
 
-    # 3. Análise Visual (Mascarada e Limpa)
+    # 3. Análise Visual
     st.divider()
     st.subheader("📊 Raio-X da Base Selecionada")
     g1, g2, g3 = st.columns(3)
@@ -386,7 +436,6 @@ else:
 
     st.subheader("📋 Amostra dos Dados (Top 50)")
     
-    # Cria preview apenas com as colunas bonitas e telefone mascarado
     df_preview = pd.DataFrame()
     df_preview['Empresa'] = df_f['nome']
     df_preview['Telefone'] = df_f['telefone'].apply(lambda x: str(x)[:-4] + "****" if x and len(str(x)) > 4 else "****")
@@ -395,7 +444,7 @@ else:
     df_preview['Nicho'] = df_f['categoria_google']
     df_preview['Cidade'] = df_f['cidade']
     df_preview['Nota'] = df_f['nota']
+    df_preview['Avaliações'] = df_f['avaliacoes'] # Mostrando na amostra visual também
     df_preview['Atualizado em'] = df_f['data_fmt']
     
     st.dataframe(df_preview.head(50), use_container_width=True, hide_index=True)
-    
