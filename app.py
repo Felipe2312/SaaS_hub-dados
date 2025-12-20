@@ -12,7 +12,6 @@ import os
 st.set_page_config(page_title="DiskLeads", layout="wide", page_icon="🚀")
 
 try:
-    # Mantendo a compatibilidade híbrida (Local e Server)
     SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets["supabase"]["url"]
     SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets["supabase"]["key"]
     MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN") or st.secrets["mercado_pago"]["access_token"]
@@ -44,8 +43,27 @@ def normalizar_categoria(cat_google):
 def fmt_real(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
+# --- NOVA FUNÇÃO GLOBAL DE CLASSIFICAÇÃO ---
+def classificar_telefone_global(tel):
+    """Classifica o telefone para uso nos filtros e no Excel"""
+    if not tel: return "Indefinido"
+    nums = "".join(filter(str.isdigit, str(tel)))
+    
+    # Lógica com 55 (Seu padrão)
+    if nums.startswith("55"):
+        # 13 dígitos = Celular (55 + 2 + 9 + 8)
+        if len(nums) == 13 and nums[4] == '9': return "Celular"
+        # 12 dígitos = Fixo (55 + 2 + 8)
+        elif len(nums) == 12: return "Fixo"
+    
+    # Fallback (sem 55)
+    else:
+        if len(nums) == 11 and nums[2] == '9': return "Celular"
+        elif len(nums) == 10: return "Fixo"
+            
+    return "Outro"
+
 def calcular_preco(qtd):
-    """Nova lógica de Tiers (Escada de Volume)"""
     tabela = [
         {"limite": 200, "preco": 0.35, "nome": "Básico"},
         {"limite": 1000, "preco": 0.25, "nome": "Profissional"},
@@ -68,7 +86,6 @@ def calcular_preco(qtd):
     preco_unitario = faixa_atual["preco"]
     valor_total = qtd * preco_unitario
     
-    # Ancoragem
     preco_ancora_ref = 0.50 if qtd < 50 else 0.35
     valor_ancora = qtd * preco_ancora_ref
     pct_economia_total = int(((valor_ancora - valor_total) / valor_ancora) * 100) if valor_ancora > 0 else 0
@@ -102,6 +119,10 @@ def get_all_data():
         df['estado'] = df['estado'].fillna('N/A')
         df['categoria_google'] = df['categoria_google'].fillna('Não identificada')
         df['Segmento'] = df['categoria_google'].apply(normalizar_categoria)
+        
+        # APLICAMOS A CLASSIFICAÇÃO AQUI, NO CARREGAMENTO
+        df['tipo_contato'] = df['telefone'].apply(classificar_telefone_global)
+        
     return df
 
 # ==========================================
@@ -113,21 +134,18 @@ st.title(f"🚀 {NOME_MARCA}")
 st.markdown("### A plataforma de inteligência de dados locais.")
 st.caption("Enriqueça seu CRM com dados públicos, atualizados e validados do Google Maps.")
 
-# --- BLOCO DE INFORMAÇÕES (PRODUTO + PREÇO) ---
 with st.expander("ℹ️ **O que eu vou receber e quanto custa?**", expanded=False):
     c_info1, c_info2 = st.columns([1.2, 1])
-    
     with c_info1:
         st.markdown("#### 📦 O que vem no arquivo?")
         st.markdown("""
         * ✅ **Nome da Empresa**
-        * ✅ **Telefone** (Misto: Linhas Fixas e Celulares/WhatsApp)
+        * ✅ **Telefone** (Você escolhe: Móvel ou Misto)
         * ✅ **Endereço Completo** (Rua, Bairro, Cidade, UF, CEP)
         * ✅ **Website** e Link do Google Maps
         * ✅ **Avaliação** e Nicho de Atuação
         """)
         st.warning("⚠️ **Nota:** Como os dados são públicos, é natural que uma pequena porcentagem dos telefones esteja desatualizada. Nosso preço baixo já considera essa margem.")
-
     with c_info2:
         st.markdown("#### 💲 Tabela de Preços (Volume)")
         st.markdown("""
@@ -143,22 +161,35 @@ with st.expander("ℹ️ **O que eu vou receber e quanto custa?**", expanded=Fal
 st.divider()
 
 # ==========================================
-# 🔍 ÁREA DE FILTROS
+# 🔍 ÁREA DE FILTROS (AGORA COM FILTRO DE TELEFONE)
 # ==========================================
 with st.container(border=True):
     st.subheader("🛠️ Configure sua Lista")
-    c1, c2, c3 = st.columns([2, 2, 1])
+    c1, c2, c3, c4 = st.columns([2, 2, 1, 1]) # Adicionei mais uma coluna
+    
     with c1: busca_nome = st.text_input("Buscar por Nome (Opcional)", placeholder="Ex: Silva...")
     with c2: nota_range = st.select_slider("Qualidade Mínima", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
     with c3: filtro_site = st.radio("Tem Site?", ["Todos", "Sim", "Não"], horizontal=True)
+    
+    # --- NOVO FILTRO DE TIPO DE TELEFONE ---
+    with c4:
+        filtro_tel = st.radio("Tipo de Contato", ["Todos", "Só Celular", "Só Fixo"], horizontal=True)
 
     t1, t2 = st.tabs(["🎯 Segmentação", "📍 Localização"])
     
     df_temp = df_raw.copy()
+    
+    # Aplicação dos Filtros Gerais
     if busca_nome: df_temp = df_temp[df_temp['nome'].str.contains(busca_nome, case=False, na=False)]
     if filtro_site == "Sim": df_temp = df_temp[df_temp['site'].notnull()]
     elif filtro_site == "Não": df_temp = df_temp[df_temp['site'].isnull()]
     df_temp = df_temp[(df_temp['nota'] >= nota_range[0]) & (df_temp['nota'] <= nota_range[1])]
+
+    # Aplicação do Filtro de Telefone
+    if filtro_tel == "Só Celular":
+        df_temp = df_temp[df_temp['tipo_contato'] == 'Celular']
+    elif filtro_tel == "Só Fixo":
+        df_temp = df_temp[df_temp['tipo_contato'] == 'Fixo']
 
     with t1:
         col_a, col_b = st.columns(2)
@@ -180,17 +211,16 @@ with st.container(border=True):
             df_bai = df_cid[df_cid['cidade'].isin(f_cidade)] if f_cidade else df_cid
             f_bairro = st.multiselect("Bairro", sorted(df_bai['bairro'].unique()) if not df_bai.empty else [])
 
-# Aplica filtros
+# Aplica filtros finais
 df_f = df_bai[df_bai['bairro'].isin(f_bairro)] if f_bairro else df_bai
 
 # ==========================================
-# 🚦 LÓGICA UX: MOSTRAR OU ESCONDER RESULTADOS
+# 🚦 LÓGICA UX
 # ==========================================
 
 filtros_ativos = any([busca_nome, f_macro, f_google, f_uf, f_cidade, f_bairro])
 
 if not filtros_ativos:
-    # --- MODO STANDBY (DASHBOARD) ---
     st.info("👆 **Utilize os filtros acima para começar.** Selecione um Estado, Cidade ou Setor.")
     
     st.markdown("### 🌎 Nossa Base em Números")
@@ -201,8 +231,6 @@ if not filtros_ativos:
     st.markdown("---")
 
 else:
-    # --- MODO ATIVO (RESULTADOS + COMPRA) ---
-    
     # 1. Precificação
     total_leads = len(df_f)
     resumo_preco = calcular_preco(total_leads)
@@ -211,7 +239,7 @@ else:
     st.divider()
 
     if total_leads == 0:
-        st.warning("⚠️ Nenhum lead encontrado com esses filtros.")
+        st.warning("⚠️ Nenhum lead encontrado com esses filtros. Tente remover o filtro de Telefone ou expandir a região.")
     else:
         # Bloco de Preço Visual
         with st.container(border=True):
@@ -221,6 +249,9 @@ else:
                 st.markdown(f"### {total_leads:,}".replace(",", "."))
                 cor_badge = "#FFD700" if resumo_preco['nivel'] == "Ouro" else ("#C0C0C0" if resumo_preco['nivel'] == "Prata" else "#CD7F32")
                 st.markdown(f"<span style='background-color:{cor_badge}; color:black; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:bold;'>{resumo_preco['nivel'].upper()}</span>", unsafe_allow_html=True)
+                # Mostra o tipo selecionado
+                if filtro_tel != "Todos":
+                    st.caption(f"Filtro Ativo: {filtro_tel}")
             with c2:
                 st.caption("Preço Unitário")
                 st.markdown(f"### {fmt_real(resumo_preco['unitario'])}")
@@ -272,21 +303,45 @@ else:
                 st.subheader("📬 Finalizar Compra")
                 ce1, ce2 = st.columns(2)
                 
-                with ce1: 
-                    email_input = st.text_input("Seu E-mail", placeholder="seu@email.com")
-                with ce2: 
-                    email_confirm = st.text_input("Confirme seu E-mail", placeholder="seu@email.com")
+                with ce1: email_input = st.text_input("Seu E-mail", placeholder="seu@email.com")
+                with ce2: email_confirm = st.text_input("Confirme seu E-mail", placeholder="seu@email.com")
                 
-                # Validação Visual
                 if email_input and email_confirm and (email_input != email_confirm):
                     st.warning("⚠️ Os e-mails não coincidem.")
 
                 pode_prosseguir = (email_input == email_confirm) and ("@" in email_input)
 
                 if st.button("💳 IR PARA PAGAMENTO SEGURO", type="primary", use_container_width=True, disabled=not pode_prosseguir):
-                    # 1. Gerar Excel e subir para o Storage
+                    
+                    # === CRIAÇÃO DO EXCEL ===
+                    df_export = df_f.copy()
+
+                    # Função para link do WhatsApp
+                    def gerar_link_wpp(tel, tipo):
+                        if tipo == "Celular": # Usa a classificação que já fizemos
+                            nums = "".join(filter(str.isdigit, str(tel)))
+                            if not nums.startswith("55"): nums = f"55{nums}"
+                            return f"https://wa.me/{nums}"
+                        return ""
+
+                    # Renomeia a coluna que criamos lá em cima para ficar bonito
+                    df_export = df_export.rename(columns={'tipo_contato': 'Tipo Telefone'})
+                    
+                    # Gera o Link
+                    df_export['Link WhatsApp'] = df_export.apply(lambda x: gerar_link_wpp(x['telefone'], x['Tipo Telefone']), axis=1)
+
+                    cols_preferenciais = ['nome', 'telefone', 'Tipo Telefone', 'Link WhatsApp', 'Segmento', 'categoria_google', 'bairro', 'cidade', 'estado', 'nota', 'site', 'endereco', 'maps_link']
+                    cols_finais = [c for c in cols_preferenciais if c in df_export.columns]
+                    df_export = df_export[cols_finais]
+
                     output_file = io.BytesIO()
-                    df_f.to_excel(output_file, index=False)
+                    with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
+                        df_export.to_excel(writer, index=False, sheet_name='Leads')
+                        worksheet = writer.sheets['Leads']
+                        worksheet.set_column('A:A', 30)
+                        worksheet.set_column('B:C', 18)
+                        worksheet.set_column('D:D', 25)
+
                     nome_arquivo = f"{st.session_state.ref_venda}.xlsx"
                     
                     supabase.storage.from_('leads_pedidos').upload(
@@ -296,7 +351,6 @@ else:
                     )
                     url_publica = supabase.storage.from_('leads_pedidos').get_public_url(nome_arquivo)
 
-                    # 2. Salvar venda no Banco
                     supabase.table("vendas").upsert({
                         "external_reference": st.session_state.ref_venda,
                         "valor": valor_total,
@@ -305,9 +359,8 @@ else:
                         "url_arquivo": url_publica
                     }).execute()
 
-                    # 3. Criar Preferência no Mercado Pago
                     pref_data = {
-                        "items": [{"title": f"Base {total_leads} Leads - {NOME_MARCA}", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
+                        "items": [{"title": f"Base {total_leads} Leads ({filtro_tel}) - {NOME_MARCA}", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
                         "external_reference": st.session_state.ref_venda,
                         "back_urls": {"success": "https://leads-brasil.streamlit.app/"},
                         "auto_return": "approved",
@@ -334,7 +387,7 @@ else:
                                 status.update(label="✅ Pago!", state="complete")
                                 st.rerun()
 
-    # 3. Análise Visual (Só aparece se tiver filtros)
+    # 3. Análise Visual
     st.divider()
     st.subheader("📊 Raio-X da Base Selecionada")
     g1, g2, g3 = st.columns(3)
@@ -349,7 +402,7 @@ else:
         st.bar_chart(df_f['Segmento'].value_counts(), color="#f39c12", horizontal=True)
 
     st.subheader("📋 Amostra dos Dados (Top 50)")
-    colunas_exibicao = {'nome': 'Empresa', 'Segmento': 'Setor', 'categoria_google': 'Nicho', 'bairro': 'Bairro', 'cidade': 'Cidade', 'estado': 'UF', 'nota': 'Nota'}
+    colunas_exibicao = {'nome': 'Empresa', 'tipo_contato': 'Tipo', 'telefone': 'Telefone', 'Segmento': 'Setor', 'categoria_google': 'Nicho', 'bairro': 'Bairro', 'cidade': 'Cidade', 'estado': 'UF', 'nota': 'Nota'}
     cols_exists = [c for c in colunas_exibicao.keys() if c in df_f.columns]
     st.dataframe(df_f[cols_exists].rename(columns=colunas_exibicao).head(50), use_container_width=True, hide_index=True)
     
