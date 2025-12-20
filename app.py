@@ -4,6 +4,11 @@ from supabase import create_client
 import io
 import mercadopago
 import time
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 
 # ==========================================
 # 🔐 CONFIGURAÇÕES E CREDENCIAIS
@@ -12,32 +17,70 @@ try:
     ACCESS_TOKEN = st.secrets["mercado_pago"]["access_token"]
     SUPABASE_URL = st.secrets["supabase"]["url"]
     SUPABASE_KEY = st.secrets["supabase"]["key"]
+    GMAIL_USER = st.secrets["gmail"]["email"]
+    GMAIL_PASS = st.secrets["gmail"]["password"]
+    NOME_MARCA = "DiskLeads" 
 except Exception as e:
-    st.error("Erro: Verifique os Secrets no painel do Streamlit Cloud.")
+    st.error("Erro: Verifique os Secrets no painel do Streamlit.")
     st.stop()
 
 SDK = mercadopago.SDK(ACCESS_TOKEN)
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ==========================================
-# 🧠 INTELIGÊNCIA DE DADOS
+# 📧 FUNÇÃO DE ENVIO DE E-MAIL (HTML PROFISSIONAL)
 # ==========================================
-def normalizar_categoria(cat_google):
-    if not cat_google: return "Outros"
-    cat = str(cat_google).lower()
-    if any(x in cat for x in ['natural', 'suplemento', 'academia', 'fit']): return "Saúde & Fitness"
-    if any(x in cat for x in ['restaurante', 'pizzaria', 'hamburgueria', 'lanchonete']): return "Alimentação"
-    if any(x in cat for x in ['médic', 'clinica', 'saúde']): return "Clínicas & Saúde"
-    if any(x in cat for x in ['oficina', 'mecânic', 'auto']): return "Automotivo"
-    if any(x in cat for x in ['advoga', 'jurídic']): return "Jurídico"
-    if any(x in cat for x in ['loja', 'varejo', 'comércio']): return "Varejo & Comércio"
-    return "Outros"
+def enviar_email_com_anexo(destinatario, df_leads, ref_venda):
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = f"{NOME_MARCA} <{GMAIL_USER}>"
+        msg['To'] = destinatario
+        msg['Subject'] = f"🚀 Seus Leads do {NOME_MARCA} Chegaram! (ID: {ref_venda})"
 
-@st.cache_resource
-def init_connection():
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+        corpo_html = f"""
+        <html>
+        <body style="font-family: sans-serif; color: #333;">
+            <div style="max-width: 600px; margin: auto; border: 1px solid #eee; padding: 20px; border-radius: 10px;">
+                <h2 style="color: #2e66f1;">Boas vendas com a {NOME_MARCA}! 📈</h2>
+                <p>Olá, o seu pedido foi processado com sucesso. Segue em anexo a sua base de leads filtrada.</p>
+                <div style="background: #f4f4f4; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                    <strong>Resumo da Extração:</strong><br>
+                    Pedido: {ref_venda}<br>
+                    Quantidade: {len(df_leads)} leads qualificados
+                </div>
+                <p>O arquivo Excel (.xlsx) está anexado a este e-mail.</p>
+                <hr style="border:0; border-top:1px solid #eee; margin: 20px 0;">
+                <p style="font-size: 11px; color: #999;">{NOME_MARCA} - Inteligência de Dados B2B</p>
+            </div>
+        </body>
+        </html>
+        """
+        msg.attach(MIMEText(corpo_html, 'html'))
 
-supabase = init_connection()
+        # Gerar Excel em memória
+        output = io.BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df_leads.to_excel(writer, index=False, sheet_name='Leads')
+        
+        part = MIMEBase('application', 'octet-stream')
+        part.set_payload(output.getvalue())
+        encoders.encode_base64(part)
+        part.add_header('Content-Disposition', f"attachment; filename= leads_{ref_venda}.xlsx")
+        msg.attach(part)
 
+        # Envio SMTP
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(GMAIL_USER, GMAIL_PASS)
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception as e:
+        return False
+
+# ==========================================
+# 🧠 BUSCA E TRATAMENTO DE DADOS
+# ==========================================
 @st.cache_data(ttl=600)
 def get_all_data():
     all_rows = []
@@ -56,18 +99,18 @@ def get_all_data():
         df['bairro'] = df['bairro'].fillna('Não informado')
         df['estado'] = df['estado'].fillna('N/A')
         df['categoria_google'] = df['categoria_google'].fillna('Não identificada')
-        df['Segmento'] = df['categoria_google'].apply(normalizar_categoria)
     return df
 
 # ==========================================
-# 🖥️ INTERFACE E FILTROS DINÂMICOS
+# 🖥️ INTERFACE E FILTROS CRUZADOS
 # ==========================================
-st.set_page_config(page_title="Leads Intelligence B2B", layout="wide", page_icon="📈")
+st.set_page_config(page_title=NOME_MARCA, layout="wide", page_icon="📈")
 df_raw = get_all_data()
 
-st.title("🚀 Hub de Inteligência B2B")
-st.caption("Filtre leads qualificados e adquira a base instantaneamente.")
+st.title(f"🚀 {NOME_MARCA}")
+st.caption("A plataforma mais rápida para extrair contatos B2B do Google Maps.")
 
+# --- FILTROS ---
 with st.container(border=True):
     c1, c2, c3 = st.columns([2, 2, 1])
     with c1: busca_nome = st.text_input("Empresa", placeholder="Buscar por nome...")
@@ -88,13 +131,12 @@ with st.container(border=True):
             f_macro = st.multiselect("Setor Principal", sorted(df_temp['Segmento'].unique()))
         with col_b:
             df_nicho = df_temp[df_temp['Segmento'].isin(f_macro)] if f_macro else df_temp
-            f_google = st.multiselect("Nicho Específico (Google)", sorted(df_nicho['categoria_google'].unique()))
+            f_google = st.multiselect("Nicho (Google)", sorted(df_nicho['categoria_google'].unique()))
             
     with t2:
         df_loc = df_nicho[df_nicho['categoria_google'].isin(f_google)] if f_google else df_nicho
         col_d, col_e, col_f = st.columns(3)
-        with col_d:
-            f_uf = st.multiselect("Estado (UF)", sorted(df_loc['estado'].unique()))
+        with col_d: f_uf = st.multiselect("Estado (UF)", sorted(df_loc['estado'].unique()))
         with col_e:
             df_cid = df_loc[df_loc['estado'].isin(f_uf)] if f_uf else df_loc
             f_cidade = st.multiselect("Cidade", sorted(df_cid['cidade'].unique()))
@@ -104,7 +146,7 @@ with st.container(border=True):
 
 df_f = df_bai[df_bai['bairro'].isin(f_bairro)] if f_bairro else df_bai
 
-# --- PRECIFICAÇÃO ---
+# --- MÉTRICAS ---
 total_leads = len(df_f)
 preco_un = 0.30 if total_leads <= 500 else (0.20 if total_leads <= 2000 else 0.12)
 valor_total = round(total_leads * preco_un, 2)
@@ -113,29 +155,27 @@ valor_br = f"R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace(
 st.divider()
 
 # ==========================================
-# 💰 LÓGICA DE PAGAMENTO (REDIRECIONAMENTO + LINK)
+# 💰 CHECKOUT E PÓS-VENDA
 # ==========================================
 if 'ref_venda' not in st.session_state:
     st.session_state.ref_venda = f"REF_{int(time.time())}"
 
-check_banco = supabase.table("vendas").select("status").eq("external_reference", st.session_state.ref_venda).execute()
-pago_no_banco = True if (check_banco.data and check_banco.data[0]['status'] == 'pago') else False
+check_venda = supabase.table("vendas").select("*").eq("external_reference", st.session_state.ref_venda).execute()
+pago = True if (check_venda.data and check_venda.data[0]['status'] == 'pago') else False
 
-if pago_no_banco:
+if pago:
     st.balloons()
-    st.success(f"✅ Pagamento Confirmado! {f'{total_leads:,}'.replace(',', '.')} leads liberados.")
+    email_dest = check_venda.data[0].get('email_cliente', 'cliente')
+    st.success(f"✅ Pagamento Confirmado! Base enviada para **{email_dest}**.")
+    
     col_dl1, col_dl2 = st.columns(2)
     with col_dl1:
-        st.download_button("💾 Baixar CSV", df_f.to_csv(index=False).encode('utf-8-sig'), f"leads_{st.session_state.ref_venda}.csv", "text/csv", use_container_width=True)
+        st.download_button("💾 Baixar CSV", df_f.to_csv(index=False).encode('utf-8-sig'), f"leads_{st.session_state.ref_venda}.csv", use_container_width=True)
     with col_dl2:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df_f.to_excel(writer, index=False, sheet_name='Leads')
         st.download_button("📊 Baixar Excel", output.getvalue(), f"leads_{st.session_state.ref_venda}.xlsx", use_container_width=True)
-    if st.button("🔄 Nova Busca"):
-        st.session_state.clear()
-        st.query_params.clear()
-        st.rerun()
 else:
     m1, m2, m3 = st.columns(3)
     m1.metric("Leads Selecionados", f"{total_leads:,}".replace(",", "."))
@@ -144,80 +184,60 @@ else:
 
     if total_leads > 0:
         with st.container(border=True):
-            if st.button("💳 FINALIZAR PEDIDO E BAIXAR AGORA", type="primary", use_container_width=True):
-                supabase.table("vendas").upsert({"external_reference": st.session_state.ref_venda, "valor": valor_total, "status": "pendente"}).execute()
+            st.subheader("📬 Onde deseja receber os dados?")
+            ce1, ce2 = st.columns(2)
+            with ce1: email_input = st.text_input("Seu E-mail")
+            with ce2: email_confirm = st.text_input("Confirme seu E-mail")
+            
+            emails_validados = (email_input == email_confirm) and ("@" in email_input)
+            
+            if email_input and email_confirm and not emails_validados:
+                st.error("⚠️ Os e-mails não conferem.")
+
+            if st.button("💳 FINALIZAR E RECEBER POR E-MAIL", type="primary", use_container_width=True, disabled=not emails_validados):
+                supabase.table("vendas").upsert({
+                    "external_reference": st.session_state.ref_venda, 
+                    "valor": valor_total, 
+                    "status": "pendente",
+                    "email_cliente": email_input
+                }).execute()
                 
                 pref_data = {
-                    "items": [{"title": f"Base {total_leads} Leads B2B", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
+                    "items": [{"title": f"Base {total_leads} Leads - {NOME_MARCA}", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
                     "external_reference": st.session_state.ref_venda,
-                    "back_urls": {"success": "https://leads-brasil.streamlit.app/"},
+                    "back_urls": {"success": "https://leads-brasil.streamlit.app/"}, # Atualize se mudar o domínio
                     "auto_return": "approved",
                 }
                 res = SDK.preference().create(pref_data)
-                
                 if res["status"] in [200, 201]:
                     link_mp = res["response"]["init_point"]
                     st.session_state.link_ativo = link_mp
-                    
-                    # Tenta abrir automático
                     st.components.v1.html(f"<script>window.open('{link_mp}', '_blank');</script>", height=0)
-                else:
-                    st.error("Erro ao gerar pagamento.")
 
-            # Se o link foi gerado, mostra a opção manual e o monitoramento
             if 'link_ativo' in st.session_state:
-                st.info("🕒 Aguardando pagamento...")
-                st.markdown(f'''
-                    <div style="text-align: center; padding: 10px; border: 1px dashed #2e66f1; border-radius: 5px;">
-                        <p style="margin-bottom: 5px;">Não foi redirecionado?</p>
-                        <a href="{st.session_state.link_ativo}" target="_blank" style="text-decoration: none;">
-                            <button style="background-color: #2e66f1; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold;">
-                                CLIQUE AQUI PARA PAGAR
-                            </button>
-                        </a>
-                    </div>
-                ''', unsafe_allow_html=True)
+                st.info("🕒 Checkout aberto em nova aba. Caso não tenha aberto:")
+                st.markdown(f'<div style="text-align:center;"><a href="{st.session_state.link_ativo}" target="_blank"><button style="padding:12px; background-color:#2e66f1; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">ABRIR PAGAMENTO MANUALMENTE</button></a></div>', unsafe_allow_html=True)
                 
-                with st.status("Verificando status do pagamento...", expanded=True) as status_box:
+                with st.status("Monitorando pagamento...", expanded=True) as status_box:
                     for _ in range(60):
                         time.sleep(2)
                         check = supabase.table("vendas").select("status").eq("external_reference", st.session_state.ref_venda).execute()
                         if check.data and check.data[0]['status'] == 'pago':
                             status_box.update(label="✅ Pagamento Detectado!", state="complete")
+                            enviar_email_com_anexo(email_input, df_f, st.session_state.ref_venda)
                             st.rerun()
     else:
-        st.error("Filtre leads para habilitar o pagamento.")
+        st.error("Utilize os filtros acima para selecionar leads.")
 
 st.divider()
-
-# --- ANÁLISE VISUAL (GRÁFICOS HORIZONTAIS) ---
+# --- GRÁFICOS E TABELA ---
 if not df_f.empty:
     st.subheader("📊 Distribuição da Seleção")
     g1, g2, g3 = st.columns(3)
-    with g1:
-        st.write("**Top Cidades**")
-        st.bar_chart(df_f['cidade'].value_counts().head(10), color="#2E66F1", horizontal=True)
-    with g2:
-        st.write("**Top Bairros**")
-        st.bar_chart(df_f['bairro'].value_counts().head(10), color="#2ecc71", horizontal=True)
-    with g3:
-        st.write("**Setores**")
-        st.bar_chart(df_f['Segmento'].value_counts(), color="#f39c12", horizontal=True)
+    with g1: st.bar_chart(df_f['cidade'].value_counts().head(10), color="#2E66F1", horizontal=True)
+    with g2: st.bar_chart(df_f['bairro'].value_counts().head(10), color="#2ecc71", horizontal=True)
+    with g3: st.bar_chart(df_f['Segmento'].value_counts(), color="#f39c12", horizontal=True)
 
-# --- DATAFRAME COM NOMES PROFISSIONAIS ---
-st.subheader("📋 Amostra dos Dados (Top 50)")
-colunas_exibicao = {
-    'nome': 'Empresa',
-    'Segmento': 'Setor',
-    'categoria_google': 'Nicho',
-    'bairro': 'Bairro',
-    'cidade': 'Cidade',
-    'estado': 'UF',
-    'nota': 'Nota',
-    'data_extracao': 'Última Atualização'
-}
-st.dataframe(
-    df_f[list(colunas_exibicao.keys())].rename(columns=colunas_exibicao).head(50), 
-    use_container_width=True, 
-    hide_index=True
-)
+st.subheader("📋 Amostra dos Dados")
+colunas_exibicao = {'nome': 'Empresa', 'Segmento': 'Setor', 'bairro': 'Bairro', 'cidade': 'Cidade', 'nota': 'Nota', 'data_extracao': 'Atualização'}
+st.dataframe(df_f[list(colunas_exibicao.keys())].rename(columns=colunas_exibicao).head(50), use_container_width=True, hide_index=True)
