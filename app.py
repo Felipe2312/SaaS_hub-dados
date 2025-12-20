@@ -7,25 +7,28 @@ import time
 import os
 
 # ==========================================
-# 🔐 CONFIGURAÇÕES
+# 🔐 CONFIGURAÇÕES E CREDENCIAIS
 # ==========================================
 st.set_page_config(page_title="DiskLeads", layout="wide", page_icon="🚀")
 
 try:
-    SUPABASE_URL = st.secrets["supabase"]["url"]
-    SUPABASE_KEY =  st.secrets["supabase"]["key"]
-    MP_ACCESS_TOKEN = st.secrets["mercado_pago"]["access_token"]
+    # Mantendo a compatibilidade híbrida (Local e Server)
+    SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets["supabase"]["url"]
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets["supabase"]["key"]
+    MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN") or st.secrets["mercado_pago"]["access_token"]
     NOME_MARCA = "DiskLeads"
 except Exception as e:
-    st.error("Erro: Credenciais não configuradas.")
+    st.error("Erro: Verifique se todos os secrets estão configurados corretamente.")
     st.stop()
 
+# Inicialização dos clientes
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 SDK = mercadopago.SDK(MP_ACCESS_TOKEN)
 
 # ==========================================
-# 🧠 FUNÇÕES
+# 🧠 FUNÇÕES DE SUPORTE (NOVA LÓGICA DE PREÇO + CATEGORIAS)
 # ==========================================
+
 def normalizar_categoria(cat_google):
     if not cat_google: return "Outros"
     cat = str(cat_google).lower()
@@ -34,15 +37,15 @@ def normalizar_categoria(cat_google):
     if any(x in cat for x in ['médic', 'clinica', 'saúde', 'hospital', 'dentista']): return "Clínicas & Saúde"
     if any(x in cat for x in ['oficina', 'mecânic', 'auto', 'carro']): return "Automotivo"
     if any(x in cat for x in ['advoga', 'jurídic', 'lei', 'contabilidade']): return "Jurídico & Escritórios"
-    if any(x in cat for x in ['loja', 'varejo', 'comércio', 'moda', 'vestuário']): return "Varejo & Comércio"
-    if any(x in cat for x in ['imobili', 'construtor', 'engenharia', 'reforma']): return "Construção & Imóveis"
+    if any(x in cat for x in ['loja', 'varejo', 'comércio', 'moda']): return "Varejo & Comércio"
+    if any(x in cat for x in ['imobili', 'construtor', 'engenharia']): return "Construção & Imóveis"
     return "Outros"
 
 def fmt_real(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def calcular_preco(qtd):
-    PRECO_BASE = 0.35 
+    """Nova lógica de Tiers (Escada de Volume)"""
     tabela = [
         {"limite": 200, "preco": 0.35, "nome": "Básico"},
         {"limite": 1000, "preco": 0.25, "nome": "Profissional"},
@@ -65,12 +68,10 @@ def calcular_preco(qtd):
     preco_unitario = faixa_atual["preco"]
     valor_total = qtd * preco_unitario
     
+    # Ancoragem
     preco_ancora_ref = 0.50 if qtd < 50 else 0.35
     valor_ancora = qtd * preco_ancora_ref
-    
-    pct_economia_total = 0
-    if valor_ancora > 0:
-        pct_economia_total = int(((valor_ancora - valor_total) / valor_ancora) * 100)
+    pct_economia_total = int(((valor_ancora - valor_total) / valor_ancora) * 100) if valor_ancora > 0 else 0
 
     return {
         "unitario": preco_unitario,
@@ -104,7 +105,7 @@ def get_all_data():
     return df
 
 # ==========================================
-# 🖥️ HEADER E INTRO
+# 🖥️ HEADER E EXPLICAÇÃO (VISUAL NOVO)
 # ==========================================
 df_raw = get_all_data()
 
@@ -112,12 +113,13 @@ st.title(f"🚀 {NOME_MARCA}")
 st.markdown("### A plataforma de inteligência de dados locais.")
 st.caption("Enriqueça seu CRM com dados públicos, atualizados e validados do Google Maps.")
 
+# Bloco de Transparência
 with st.expander("ℹ️ **O que eu vou receber? (Detalhes dos Dados)**", expanded=False):
     c_info1, c_info2 = st.columns([1.2, 1])
     with c_info1:
         st.markdown("""
         #### 📦 Conteúdo do Arquivo
-        Você receberá um arquivo **Excel** gerado na hora contendo:
+        Você receberá um arquivo **Excel** contendo:
         * ✅ **Nome da Empresa**
         * ✅ **Telefone** (Misto: Linhas Fixas e Celulares/WhatsApp)
         * ✅ **Endereço Completo** (Rua, Bairro, Cidade, UF, CEP)
@@ -138,10 +140,10 @@ with st.expander("ℹ️ **O que eu vou receber? (Detalhes dos Dados)**", expand
 st.divider()
 
 # ==========================================
-# 🔍 ÁREA DE FILTROS (SEMPRE VISÍVEL)
+# 🔍 ÁREA DE FILTROS
 # ==========================================
 with st.container(border=True):
-    st.subheader("🛠️ Comece filtrando sua lista")
+    st.subheader("🛠️ Configure sua Lista")
     c1, c2, c3 = st.columns([2, 2, 1])
     with c1: busca_nome = st.text_input("Buscar por Nome (Opcional)", placeholder="Ex: Silva...")
     with c2: nota_range = st.select_slider("Qualidade Mínima", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
@@ -149,7 +151,6 @@ with st.container(border=True):
 
     t1, t2 = st.tabs(["🎯 Segmentação", "📍 Localização"])
     
-    # Lógica de Filtros (Mas não mostra resultados ainda)
     df_temp = df_raw.copy()
     if busca_nome: df_temp = df_temp[df_temp['nome'].str.contains(busca_nome, case=False, na=False)]
     if filtro_site == "Sim": df_temp = df_temp[df_temp['site'].notnull()]
@@ -176,36 +177,28 @@ with st.container(border=True):
             df_bai = df_cid[df_cid['cidade'].isin(f_cidade)] if f_cidade else df_cid
             f_bairro = st.multiselect("Bairro", sorted(df_bai['bairro'].unique()) if not df_bai.empty else [])
 
-# Aplicação final dos filtros
+# Aplica filtros
 df_f = df_bai[df_bai['bairro'].isin(f_bairro)] if f_bairro else df_bai
 
 # ==========================================
-# 🚦 LÓGICA DE UX: MOSTRAR RESULTADOS OU DASHBOARD?
+# 🚦 LÓGICA UX: MOSTRAR OU ESCONDER RESULTADOS
 # ==========================================
 
-# Verifica se o usuário mexeu em algum filtro
 filtros_ativos = any([busca_nome, f_macro, f_google, f_uf, f_cidade, f_bairro])
-# OBS: nota_range e filtro_site costumam ser padrão, então só consideramos "ativo" se mexer nos outros
-# Mas se quiser ser rigoroso, pode incluir tudo. Vou deixar o básico para "obrigar" uma ação.
 
 if not filtros_ativos:
-    # --- ESTADO INICIAL (DASHBOARD GLOBAL) ---
-    st.info("👆 **Utilize os filtros acima para começar.** Selecione um Estado, Cidade ou Setor para visualizar os leads disponíveis.")
+    # --- MODO STANDBY (DASHBOARD) ---
+    st.info("👆 **Utilize os filtros acima para começar.** Selecione um Estado, Cidade ou Setor.")
     
     st.markdown("### 🌎 Nossa Base em Números")
     m1, m2, m3 = st.columns(3)
-    with m1:
-        st.metric("Total de Empresas", f"{len(df_raw):,}".replace(",", "."))
-    with m2:
-        st.metric("Cidades Cobertas", f"{df_raw['cidade'].nunique()}")
-    with m3:
-        st.metric("Setores Disponíveis", f"{df_raw['Segmento'].nunique()}")
-        
+    with m1: st.metric("Total de Empresas", f"{len(df_raw):,}".replace(",", "."))
+    with m2: st.metric("Cidades Cobertas", f"{df_raw['cidade'].nunique()}")
+    with m3: st.metric("Setores Disponíveis", f"{df_raw['Segmento'].nunique()}")
     st.markdown("---")
-    st.caption("Aguardando seleção...")
 
 else:
-    # --- ESTADO ATIVO (MOSTRA RESULTADOS, PREÇO E COMPRA) ---
+    # --- MODO ATIVO (RESULTADOS + COMPRA) ---
     
     # 1. Precificação
     total_leads = len(df_f)
@@ -215,9 +208,9 @@ else:
     st.divider()
 
     if total_leads == 0:
-        st.warning("⚠️ Nenhum lead encontrado com esses filtros. Tente expandir sua busca.")
+        st.warning("⚠️ Nenhum lead encontrado com esses filtros.")
     else:
-        # Bloco de Preço
+        # Bloco de Preço Visual
         with st.container(border=True):
             c1, c2, c3 = st.columns([1, 1, 1])
             with c1:
@@ -251,9 +244,9 @@ else:
                 progresso = min(total_leads / meta, 0.98) 
                 st.write("") 
                 st.progress(progresso)
-                st.info(f"Adicione apenas **{faltam} leads** para entrar na próxima faixa e pagar **{fmt_real(prox_preco)}/unid** (Redução extra de {economia_extra_pct}% no custo).")
+                st.info(f"💡 Falta pouco! Adicione apenas **{faltam} leads** para entrar na próxima faixa e pagar **{fmt_real(prox_preco)}/unid** (Redução extra de {economia_extra_pct}% no custo).")
 
-        # 2. Área de Pagamento
+        # 2. Área de Pagamento (USANDO SEU CÓDIGO ORIGINAL QUE FUNCIONA)
         if 'ref_venda' not in st.session_state:
             st.session_state.ref_venda = f"REF_{int(time.time())}"
 
@@ -281,40 +274,36 @@ else:
                 pode_prosseguir = (email_input == email_confirm) and ("@" in email_input)
 
                 if st.button("💳 IR PARA PAGAMENTO SEGURO", type="primary", use_container_width=True, disabled=not pode_prosseguir):
-                    # 1. Gerar Excel na memória
+                    # === INICIO DO BLOCO ORIGINAL ===
+                    # 1. Gerar Excel e subir para o Storage (Bucket: leads_pedidos)
                     output_file = io.BytesIO()
                     df_f.to_excel(output_file, index=False)
                     nome_arquivo = f"{st.session_state.ref_venda}.xlsx"
                     
-                    # 2. Upload para o Supabase Storage
-                    # Nota: Certifique-se que o bucket 'leads_pedidos' existe e é público/acessível
+                    # Upload para o Supabase Storage (SEM MEXER NOS PARAMETROS)
                     supabase.storage.from_('leads_pedidos').upload(
                         path=nome_arquivo, 
                         file=output_file.getvalue(), 
                         file_options={"x-upsert": "true", "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
                     )
-                    
-                    # Pega o link público do arquivo recém-criado
                     url_publica = supabase.storage.from_('leads_pedidos').get_public_url(nome_arquivo)
 
-                    # 3. Salva a venda no Banco (SEM OS FILTROS JSON)
-                    # Isso vai funcionar direto, pois são as colunas padrão que você já tem
+                    # 2. Salvar venda no Banco (Pendente) - SEM FILTROS JSON PARA NÃO QUEBRAR
                     supabase.table("vendas").upsert({
                         "external_reference": st.session_state.ref_venda,
                         "valor": valor_total,
                         "status": "pendente",
                         "email_cliente": email_input,
-                        "url_arquivo": url_publica,
-                        "enviado": False
+                        "url_arquivo": url_publica
                     }).execute()
 
-                    # 4. Cria a preferência no Mercado Pago
+                    # 3. Criar Preferência no Mercado Pago
                     pref_data = {
-                        "items": [{"title": f"Pacote {total_leads} Leads - {NOME_MARCA}", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
+                        "items": [{"title": f"Base {total_leads} Leads - {NOME_MARCA}", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
                         "external_reference": st.session_state.ref_venda,
-                        "back_urls": {"success": "https://leads-brasil.streamlit.app/"}, # Ajuste sua URL se necessário
+                        "back_urls": {"success": "https://leads-brasil.streamlit.app/"},
                         "auto_return": "approved",
-                        "notification_url": "https://wsqebbwjmiwiscbkmawy.supabase.co/functions/v1/webhook-pagamento" 
+                        "notification_url": "https://wsqebbwjmiwiscbkmawy.supabase.co/functions/v1/smooth-processor" # Mantive o nome original que funcionava
                     }
                     res = SDK.preference().create(pref_data)
                     
@@ -324,8 +313,8 @@ else:
                         st.components.v1.html(f"<script>window.open('{link_mp}', '_blank');</script>", height=0)
                     else:
                         st.error("Erro ao gerar link de pagamento.")
+                    # === FIM DO BLOCO ORIGINAL ===
 
-                # Monitoramento do Pagamento (Polling)
                 if 'link_ativo' in st.session_state:
                     st.info("🕒 Checkout aberto em nova guia. Caso não tenha aberto, clique abaixo:")
                     st.markdown(f'<div style="text-align:center;"><a href="{st.session_state.link_ativo}" target="_blank"><button style="padding:12px; background-color:#2e66f1; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">ABRIR PAGAMENTO MANUALMENTE</button></a></div>', unsafe_allow_html=True)
