@@ -10,7 +10,6 @@ import os
 # 🔐 CONFIGURAÇÕES E CREDENCIAIS
 # ==========================================
 try:
-    # Tenta ler do ambiente (Docker/Servidor) ou dos secrets locais
     SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets["supabase"]["url"]
     SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets["supabase"]["key"]
     MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN") or st.secrets["mercado_pago"]["access_token"]
@@ -43,7 +42,10 @@ def fmt_real(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def calcular_preco(qtd):
-    """Calcula preço baseado em Tiers (Faixas de Volume) - Modelo Transparente"""
+    """Calcula preço baseado em Tiers com ancoragem no preço base"""
+    # Preço Base para comparação (R$ 0,35 - O preço de entrada)
+    PRECO_BASE = 0.35 
+
     tabela = [
         {"limite": 200, "preco": 0.35, "nome": "Básico"},
         {"limite": 1000, "preco": 0.25, "nome": "Profissional"},
@@ -54,24 +56,30 @@ def calcular_preco(qtd):
     faixa_atual = None
     proxima_faixa = None
 
-    # Identifica em qual faixa o cliente está
     for i, faixa in enumerate(tabela):
         if qtd <= faixa["limite"]:
             faixa_atual = faixa
+            # Pega o PRÓXIMO nível imediato
             if i + 1 < len(tabela):
                 proxima_faixa = tabela[i+1]
             break
     
-    # Fallback para a última faixa se exceder o limite
+    # Se passou do último limite
     if not faixa_atual:
         faixa_atual = tabela[-1]
 
     preco_unitario = faixa_atual["preco"]
     valor_total = qtd * preco_unitario
+    
+    # Ancoragem: Quanto custaria se não tivesse desconto de volume (Preço Base)
+    # Se estiver no nível básico, usamos um preço de mercado fictício (0.50) para dar sensação de vantagem
+    preco_comparacao = 0.50 if faixa_atual["nome"] == "Básico" else 0.35
+    valor_tabela = qtd * preco_comparacao
 
     return {
         "unitario": preco_unitario,
         "total": valor_total,
+        "total_ancora": valor_tabela,
         "nivel": faixa_atual["nome"],
         "prox_qtd": proxima_faixa["limite"] + 1 if proxima_faixa else None,
         "prox_preco": proxima_faixa["preco"] if proxima_faixa else None
@@ -146,17 +154,16 @@ with st.container(border=True):
 df_f = df_bai[df_bai['bairro'].isin(f_bairro)] if f_bairro else df_bai
 
 # ==========================================
-# 💲 PRECIFICAÇÃO & CARRINHO (NOVO VISUAL)
+# 💲 PRECIFICAÇÃO & CARRINHO (VISUAL REFINADO)
 # ==========================================
 total_leads = len(df_f)
 resumo_preco = calcular_preco(total_leads)
-valor_total = round(resumo_preco['total'], 2) # Valor final para o Mercado Pago
+valor_total = round(resumo_preco['total'], 2)
 
 if total_leads > 0:
     st.divider()
     
-    # Tabela de Preços (Expander para não poluir, mas disponível para consulta)
-    with st.expander("ℹ️ Ver Tabela de Descontos por Volume (Quanto mais leads, menor o preço unitário)", expanded=False):
+    with st.expander("ℹ️ Ver Tabela de Descontos por Volume", expanded=False):
         st.markdown("""
         | Quantidade de Leads | Preço por Lead | Categoria |
         | :--- | :--- | :--- |
@@ -172,32 +179,42 @@ if total_leads > 0:
         with c1:
             st.caption("Volume Selecionado")
             st.markdown(f"### {total_leads:,}".replace(",", "."))
-            st.markdown(f"**Categoria: {resumo_preco['nivel']}**")
+            # Badge de Nível
+            cor_badge = "#FFD700" if resumo_preco['nivel'] == "Ouro" else ("#C0C0C0" if resumo_preco['nivel'] == "Prata" else "#CD7F32")
+            st.markdown(f"<span style='background-color:{cor_badge}; color:black; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:bold;'>{resumo_preco['nivel'].upper()}</span>", unsafe_allow_html=True)
 
         with c2:
-            st.caption("Preço Unitário Aplicado")
-            # Valor atual grande
+            st.caption("Preço Unitário")
             st.markdown(f"### {fmt_real(resumo_preco['unitario'])}")
         
         with c3:
-            st.caption("Total a Pagar")
-            st.markdown(f"<h3 style='color:#2ecc71'>{fmt_real(resumo_preco['total'])}</h3>", unsafe_allow_html=True)
+            st.caption("Valor Total")
+            # Lógica do preço riscado
+            if resumo_preco['total'] < resumo_preco['total_ancora']:
+                st.markdown(f"""
+                <span style="text-decoration: line-through; color: #ff4b4b; font-size: 16px;">
+                    {fmt_real(resumo_preco['total_ancora'])}
+                </span>
+                """, unsafe_allow_html=True)
+            
+            st.markdown(f"<h3 style='color:#2ecc71; margin-top:-5px'>{fmt_real(resumo_preco['total'])}</h3>", unsafe_allow_html=True)
 
-        # Lógica de Incentivo (Barra de Progresso)
+        # Barra de Progresso
         if resumo_preco['prox_qtd']:
             faltam = resumo_preco['prox_qtd'] - total_leads
             prox_preco = resumo_preco['prox_preco']
             
-            # Cálculo de % de economia se pular de nível
+            # Cálculo de % para o próximo nível
             economia_pct = int(((resumo_preco['unitario'] - prox_preco) / resumo_preco['unitario']) * 100)
             
-            # Ajuste da barra
+            # Barra
+            limite_anterior = 0 # simplificado
             meta = resumo_preco['prox_qtd']
             progresso = min(total_leads / meta, 0.95)
 
             st.write("") 
             st.progress(progresso)
-            st.info(f"💡 Falta pouco! Adicione mais **{faltam} leads** para baixar o preço para **{fmt_real(prox_preco)}/unid** (Economia de {economia_pct}%).")
+            st.info(f"💡 Falta pouco! Adicione mais **{faltam} leads** para entrar na próxima faixa e pagar apenas **{fmt_real(prox_preco)}/unid** (Economia extra de {economia_pct}%).")
 
 else:
     st.divider()
@@ -206,12 +223,12 @@ else:
 st.divider()
 
 # ==========================================
-# 💰 LÓGICA DE PAGAMENTO (INTEGRADA COM EDGE FUNCTION)
+# 💰 LÓGICA DE PAGAMENTO
 # ==========================================
 if 'ref_venda' not in st.session_state:
     st.session_state.ref_venda = f"REF_{int(time.time())}"
 
-# Verifica status atual no banco
+# Verifica status
 check_banco = supabase.table("vendas").select("*").eq("external_reference", st.session_state.ref_venda).execute()
 dados_venda = check_banco.data[0] if check_banco.data else None
 pago = True if (dados_venda and dados_venda['status'] == 'pago') else False
@@ -239,12 +256,10 @@ else:
             pode_prosseguir = (email_input == email_confirm) and ("@" in email_input)
 
             if st.button("💳 IR PARA PAGAMENTO SEGURO", type="primary", use_container_width=True, disabled=not pode_prosseguir):
-                # 1. Gerar Excel e subir para o Storage
                 output_file = io.BytesIO()
                 df_f.to_excel(output_file, index=False)
                 nome_arquivo = f"{st.session_state.ref_venda}.xlsx"
                 
-                # Upload com Upsert
                 supabase.storage.from_('leads_pedidos').upload(
                     path=nome_arquivo, 
                     file=output_file.getvalue(), 
@@ -252,7 +267,7 @@ else:
                 )
                 url_publica = supabase.storage.from_('leads_pedidos').get_public_url(nome_arquivo)
 
-                # 2. Registra JSON de filtros para o Scraper Local usar
+                # Salva Filtros para o Robô Local
                 filtros_cliente = {
                     "setor": f_macro,
                     "nicho": f_google,
@@ -260,7 +275,6 @@ else:
                     "bairro": f_bairro
                 }
 
-                # 3. Salva venda no Banco
                 supabase.table("vendas").upsert({
                     "external_reference": st.session_state.ref_venda,
                     "valor": valor_total,
@@ -268,11 +282,9 @@ else:
                     "email_cliente": email_input,
                     "url_arquivo": url_publica,
                     "enviado": False,
-                    # Se você ainda não criou a coluna 'filtros_json' no banco, comente a linha abaixo:
                     # "filtros_json": filtros_cliente 
                 }).execute()
 
-                # 4. Criar Preferência no Mercado Pago
                 pref_data = {
                     "items": [{"title": f"Base {total_leads} Leads - {NOME_MARCA}", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
                     "external_reference": st.session_state.ref_venda,
@@ -301,7 +313,7 @@ else:
                             status.update(label="✅ Pago!", state="complete")
                             st.rerun()
 
-# --- ANÁLISE VISUAL (Final da Página) ---
+# --- ANÁLISE VISUAL ---
 if not df_f.empty:
     st.subheader("📊 Raio-X da Base Selecionada")
     g1, g2, g3 = st.columns(3)
