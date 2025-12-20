@@ -104,7 +104,7 @@ def get_all_data():
     return df
 
 # ==========================================
-# 🖥️ INTERFACE E HEADER
+# 🖥️ HEADER E INTRO
 # ==========================================
 df_raw = get_all_data()
 
@@ -112,58 +112,44 @@ st.title(f"🚀 {NOME_MARCA}")
 st.markdown("### A plataforma de inteligência de dados locais.")
 st.caption("Enriqueça seu CRM com dados públicos, atualizados e validados do Google Maps.")
 
-# --- NOVO BLOCO: O QUE VEM NA LISTA (SEM EMAIL) ---
-with st.expander("ℹ️ **O que eu vou receber? (Veja um Exemplo)**", expanded=False):
-    c_info1, c_info2 = st.columns([1, 1])
-    
+with st.expander("ℹ️ **O que eu vou receber? (Detalhes dos Dados)**", expanded=False):
+    c_info1, c_info2 = st.columns([1.2, 1])
     with c_info1:
         st.markdown("""
-        #### 📦 O que vem na planilha?
-        Você receberá um arquivo **Excel (.xlsx)** pronto para importar no seu CRM ou discador, contendo:
-        
+        #### 📦 Conteúdo do Arquivo
+        Você receberá um arquivo **Excel** gerado na hora contendo:
         * ✅ **Nome da Empresa**
-        * ✅ **Celular**    
+        * ✅ **Telefone** (Misto: Linhas Fixas e Celulares/WhatsApp)
         * ✅ **Endereço Completo** (Rua, Bairro, Cidade, UF, CEP)
-        * ✅ **Website** (Link direto para o site da empresa)
-        * ✅ **Avaliação (Nota)** e Quantidade de Avaliações
-        * ✅ **Categoria** e Nicho de Atuação
-        * ✅ **Link direto** para a localização no Google Maps
+        * ✅ **Website** e Link do Google Maps
+        * ✅ **Avaliação** e Nicho de Atuação
         """)
-        st.info("💡 **Ideal para:** Prospecção via **WhatsApp, Cold Call (Ligação Fria)** e visitas presenciais (Porta-a-Porta).")
-        
+        st.warning("⚠️ **Nota:** Como os dados são públicos, é natural que uma pequena porcentagem dos telefones esteja desatualizada ou sejam fixos. Nosso preço baixo já considera essa margem.")
     with c_info2:
-        st.markdown("#### 📄 Prévia Visual dos Dados")
-        # Exemplo focado em telefone e endereço
+        st.markdown("#### 📄 Exemplo Visual")
         df_exemplo = pd.DataFrame({
             "Empresa": ["Padaria Pão Dourado", "Auto Center Silva"],
-            "Telefone": ["(11) 99999-1234", "(21) 3344-5566"],
+            "Telefone": ["(11) 99999-1234 📱", "(21) 3344-5566 ☎️"],
+            "Tipo": ["Celular/Zap", "Fixo"],
             "Cidade": ["São Paulo", "Rio de Janeiro"],
-            "Categoria":['Padaria','Auto Center'],
-            "Bairro": ["Vila Madalena", "Copacabana"],
-            "Nota": ["4.8 ⭐", "4.2 ⭐"],
-            "Site": ["paodourado.com.br", "autocenter.com.br"]
         })
         st.dataframe(df_exemplo, hide_index=True, use_container_width=True)
-        st.caption("*Dados públicos extraídos do Perfil da Empresa no Google.")
-        st.warning("""
-        ⚠️ **Nota de Transparência:** Como os dados são extraídos de fichas públicas, é natural que uma pequena porcentagem dos telefones esteja desatualizada ou sejam apenas linhas fixas (não possuem WhatsApp). 
-        **Nosso preço baixo já considera essa margem de segurança.**
-        """)
 
 st.divider()
 
 # ==========================================
-# 🔍 FILTROS
+# 🔍 ÁREA DE FILTROS (SEMPRE VISÍVEL)
 # ==========================================
 with st.container(border=True):
-    st.subheader("🛠️ Configure sua Lista")
+    st.subheader("🛠️ Comece filtrando sua lista")
     c1, c2, c3 = st.columns([2, 2, 1])
     with c1: busca_nome = st.text_input("Buscar por Nome (Opcional)", placeholder="Ex: Silva...")
-    with c2: nota_range = st.select_slider("Qualidade Mínima (Nota Google)", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
-    with c3: filtro_site = st.radio("Tem Site/Insta?", ["Todos", "Sim", "Não"], horizontal=True)
+    with c2: nota_range = st.select_slider("Qualidade Mínima", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
+    with c3: filtro_site = st.radio("Tem Site?", ["Todos", "Sim", "Não"], horizontal=True)
 
     t1, t2 = st.tabs(["🎯 Segmentação", "📍 Localização"])
     
+    # Lógica de Filtros (Mas não mostra resultados ainda)
     df_temp = df_raw.copy()
     if busca_nome: df_temp = df_temp[df_temp['nome'].str.contains(busca_nome, case=False, na=False)]
     if filtro_site == "Sim": df_temp = df_temp[df_temp['site'].notnull()]
@@ -190,156 +176,166 @@ with st.container(border=True):
             df_bai = df_cid[df_cid['cidade'].isin(f_cidade)] if f_cidade else df_cid
             f_bairro = st.multiselect("Bairro", sorted(df_bai['bairro'].unique()) if not df_bai.empty else [])
 
+# Aplicação final dos filtros
 df_f = df_bai[df_bai['bairro'].isin(f_bairro)] if f_bairro else df_bai
 
 # ==========================================
-# 💲 PRECIFICAÇÃO (FINAL)
+# 🚦 LÓGICA DE UX: MOSTRAR RESULTADOS OU DASHBOARD?
 # ==========================================
-total_leads = len(df_f)
-resumo_preco = calcular_preco(total_leads)
-valor_total = round(resumo_preco['total'], 2)
 
-if total_leads > 0:
-    st.divider()
+# Verifica se o usuário mexeu em algum filtro
+filtros_ativos = any([busca_nome, f_macro, f_google, f_uf, f_cidade, f_bairro])
+# OBS: nota_range e filtro_site costumam ser padrão, então só consideramos "ativo" se mexer nos outros
+# Mas se quiser ser rigoroso, pode incluir tudo. Vou deixar o básico para "obrigar" uma ação.
+
+if not filtros_ativos:
+    # --- ESTADO INICIAL (DASHBOARD GLOBAL) ---
+    st.info("👆 **Utilize os filtros acima para começar.** Selecione um Estado, Cidade ou Setor para visualizar os leads disponíveis.")
     
-    with st.container(border=True):
-        c1, c2, c3 = st.columns([1, 1, 1])
+    st.markdown("### 🌎 Nossa Base em Números")
+    m1, m2, m3 = st.columns(3)
+    with m1:
+        st.metric("Total de Empresas", f"{len(df_raw):,}".replace(",", "."))
+    with m2:
+        st.metric("Cidades Cobertas", f"{df_raw['cidade'].nunique()}")
+    with m3:
+        st.metric("Setores Disponíveis", f"{df_raw['Segmento'].nunique()}")
         
-        with c1:
-            st.caption("Volume Selecionado")
-            st.markdown(f"### {total_leads:,}".replace(",", "."))
-            cor_badge = "#FFD700" if resumo_preco['nivel'] == "Ouro" else ("#C0C0C0" if resumo_preco['nivel'] == "Prata" else "#CD7F32")
-            st.markdown(f"<span style='background-color:{cor_badge}; color:black; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:bold;'>{resumo_preco['nivel'].upper()}</span>", unsafe_allow_html=True)
-
-        with c2:
-            st.caption("Preço Unitário")
-            st.markdown(f"### {fmt_real(resumo_preco['unitario'])}")
-        
-        with c3:
-            st.caption("Total a Pagar")
-            if resumo_preco['pct_off'] > 0:
-                 st.markdown(f"""
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <span style="text-decoration: line-through; color: #ff4b4b; font-size: 14px;">
-                        {fmt_real(resumo_preco['total_ancora'])}
-                    </span>
-                    <span style="background-color: #d4edda; color: #155724; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: bold;">
-                        -{resumo_preco['pct_off']}% OFF
-                    </span>
-                </div>
-                """, unsafe_allow_html=True)
-            st.markdown(f"<h3 style='color:#2ecc71; margin-top:0px'>{fmt_real(resumo_preco['total'])}</h3>", unsafe_allow_html=True)
-
-        if resumo_preco['prox_qtd']:
-            meta = resumo_preco['prox_qtd']
-            faltam = meta - total_leads
-            prox_preco = resumo_preco['prox_preco']
-            economia_extra_pct = int(((resumo_preco['unitario'] - prox_preco) / resumo_preco['unitario']) * 100)
-            
-            progresso = min(total_leads / meta, 0.98) 
-
-            st.write("") 
-            st.progress(progresso)
-            st.info(f"💡 Falta pouco! Adicione apenas **{faltam} leads** para entrar na próxima faixa e pagar **{fmt_real(prox_preco)}/unid** (Redução extra de {economia_extra_pct}% no custo).")
+    st.markdown("---")
+    st.caption("Aguardando seleção...")
 
 else:
+    # --- ESTADO ATIVO (MOSTRA RESULTADOS, PREÇO E COMPRA) ---
+    
+    # 1. Precificação
+    total_leads = len(df_f)
+    resumo_preco = calcular_preco(total_leads)
+    valor_total = round(resumo_preco['total'], 2)
+
     st.divider()
-    st.warning("⚠️ Utilize os filtros acima para selecionar os leads que deseja comprar.")
 
-st.divider()
-
-# ==========================================
-# 💰 PAGAMENTO
-# ==========================================
-if 'ref_venda' not in st.session_state:
-    st.session_state.ref_venda = f"REF_{int(time.time())}"
-
-check_banco = supabase.table("vendas").select("*").eq("external_reference", st.session_state.ref_venda).execute()
-dados_venda = check_banco.data[0] if check_banco.data else None
-pago = True if (dados_venda and dados_venda['status'] == 'pago') else False
-
-if pago:
-    st.balloons()
-    st.success(f"✅ Pagamento Confirmado! Os leads foram enviados para {dados_venda['email_cliente']}")
-    
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df_f.to_excel(writer, index=False, sheet_name='Leads')
-    st.download_button("💾 Baixar Arquivo Agora", output.getvalue(), f"leads_{st.session_state.ref_venda}.xlsx", use_container_width=True)
-    
-    if st.button("🔄 Nova Busca"):
-        st.session_state.clear()
-        st.rerun()
-else:
-    if total_leads > 0:
+    if total_leads == 0:
+        st.warning("⚠️ Nenhum lead encontrado com esses filtros. Tente expandir sua busca.")
+    else:
+        # Bloco de Preço
         with st.container(border=True):
-            st.subheader("📬 Finalizar Compra")
-            ce1, ce2 = st.columns(2)
-            with ce1: email_input = st.text_input("Seu E-mail")
-            with ce2: email_confirm = st.text_input("Confirme seu E-mail")
-            
-            pode_prosseguir = (email_input == email_confirm) and ("@" in email_input)
+            c1, c2, c3 = st.columns([1, 1, 1])
+            with c1:
+                st.caption("Volume Selecionado")
+                st.markdown(f"### {total_leads:,}".replace(",", "."))
+                cor_badge = "#FFD700" if resumo_preco['nivel'] == "Ouro" else ("#C0C0C0" if resumo_preco['nivel'] == "Prata" else "#CD7F32")
+                st.markdown(f"<span style='background-color:{cor_badge}; color:black; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:bold;'>{resumo_preco['nivel'].upper()}</span>", unsafe_allow_html=True)
+            with c2:
+                st.caption("Preço Unitário")
+                st.markdown(f"### {fmt_real(resumo_preco['unitario'])}")
+            with c3:
+                st.caption("Total a Pagar")
+                if resumo_preco['pct_off'] > 0:
+                     st.markdown(f"""
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <span style="text-decoration: line-through; color: #ff4b4b; font-size: 14px;">
+                            {fmt_real(resumo_preco['total_ancora'])}
+                        </span>
+                        <span style="background-color: #d4edda; color: #155724; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: bold;">
+                            -{resumo_preco['pct_off']}% OFF
+                        </span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                st.markdown(f"<h3 style='color:#2ecc71; margin-top:0px'>{fmt_real(resumo_preco['total'])}</h3>", unsafe_allow_html=True)
 
-            if st.button("💳 IR PARA PAGAMENTO SEGURO", type="primary", use_container_width=True, disabled=not pode_prosseguir):
-                output_file = io.BytesIO()
-                df_f.to_excel(output_file, index=False)
-                nome_arquivo = f"{st.session_state.ref_venda}.xlsx"
+            if resumo_preco['prox_qtd']:
+                meta = resumo_preco['prox_qtd']
+                faltam = meta - total_leads
+                prox_preco = resumo_preco['prox_preco']
+                economia_extra_pct = int(((resumo_preco['unitario'] - prox_preco) / resumo_preco['unitario']) * 100)
+                progresso = min(total_leads / meta, 0.98) 
+                st.write("") 
+                st.progress(progresso)
+                st.info(f"💡 Falta pouco! Adicione apenas **{faltam} leads** para entrar na próxima faixa e pagar **{fmt_real(prox_preco)}/unid** (Redução extra de {economia_extra_pct}% no custo).")
+
+        # 2. Área de Pagamento
+        if 'ref_venda' not in st.session_state:
+            st.session_state.ref_venda = f"REF_{int(time.time())}"
+
+        check_banco = supabase.table("vendas").select("*").eq("external_reference", st.session_state.ref_venda).execute()
+        dados_venda = check_banco.data[0] if check_banco.data else None
+        pago = True if (dados_venda and dados_venda['status'] == 'pago') else False
+
+        if pago:
+            st.balloons()
+            st.success(f"✅ Pagamento Confirmado! Os leads foram enviados para {dados_venda['email_cliente']}")
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                df_f.to_excel(writer, index=False, sheet_name='Leads')
+            st.download_button("💾 Baixar Arquivo Agora", output.getvalue(), f"leads_{st.session_state.ref_venda}.xlsx", use_container_width=True)
+            if st.button("🔄 Nova Busca"):
+                st.session_state.clear()
+                st.rerun()
+        else:
+            with st.container(border=True):
+                st.subheader("📬 Finalizar Compra")
+                ce1, ce2 = st.columns(2)
+                with ce1: email_input = st.text_input("Seu E-mail")
+                with ce2: email_confirm = st.text_input("Confirme seu E-mail")
                 
-                supabase.storage.from_('leads_pedidos').upload(
-                    path=nome_arquivo, 
-                    file=output_file.getvalue(), 
-                    file_options={"x-upsert": "true", "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
-                )
-                url_publica = supabase.storage.from_('leads_pedidos').get_public_url(nome_arquivo)
+                pode_prosseguir = (email_input == email_confirm) and ("@" in email_input)
 
-                filtros_cliente = {
-                    "setor": f_macro,
-                    "nicho": f_google,
-                    "cidade": f_cidade,
-                    "bairro": f_bairro
-                }
+                if st.button("💳 IR PARA PAGAMENTO SEGURO", type="primary", use_container_width=True, disabled=not pode_prosseguir):
+                    # Lógica de Checkout (igual anterior)
+                    output_file = io.BytesIO()
+                    df_f.to_excel(output_file, index=False)
+                    nome_arquivo = f"{st.session_state.ref_venda}.xlsx"
+                    supabase.storage.from_('leads_pedidos').upload(
+                        path=nome_arquivo, 
+                        file=output_file.getvalue(), 
+                        file_options={"x-upsert": "true", "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
+                    )
+                    url_publica = supabase.storage.from_('leads_pedidos').get_public_url(nome_arquivo)
 
-                supabase.table("vendas").upsert({
-                    "external_reference": st.session_state.ref_venda,
-                    "valor": valor_total,
-                    "status": "pendente",
-                    "email_cliente": email_input,
-                    "url_arquivo": url_publica,
-                    "enviado": False,
-                    "filtros_json": filtros_cliente
-                }).execute()
+                    filtros_cliente = {
+                        "setor": f_macro,
+                        "nicho": f_google,
+                        "cidade": f_cidade,
+                        "bairro": f_bairro
+                    }
+                    supabase.table("vendas").upsert({
+                        "external_reference": st.session_state.ref_venda,
+                        "valor": valor_total,
+                        "status": "pendente",
+                        "email_cliente": email_input,
+                        "url_arquivo": url_publica,
+                        "enviado": False,
+                        "filtros_json": filtros_cliente
+                    }).execute()
+                    pref_data = {
+                        "items": [{"title": f"Pacote {total_leads} Leads - {NOME_MARCA}", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
+                        "external_reference": st.session_state.ref_venda,
+                        "back_urls": {"success": "https://leads-brasil.streamlit.app/"},
+                        "auto_return": "approved",
+                        "notification_url": "https://wsqebbwjmiwiscbkmawy.supabase.co/functions/v1/webhook-pagamento" 
+                    }
+                    res = SDK.preference().create(pref_data)
+                    if res["status"] in [200, 201]:
+                        link_mp = res["response"]["init_point"]
+                        st.session_state.link_ativo = link_mp
+                        st.components.v1.html(f"<script>window.open('{link_mp}', '_blank');</script>", height=0)
+                    else:
+                        st.error("Erro ao gerar link.")
 
-                pref_data = {
-                    "items": [{"title": f"Pacote {total_leads} Leads - {NOME_MARCA}", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
-                    "external_reference": st.session_state.ref_venda,
-                    "back_urls": {"success": "https://leads-brasil.streamlit.app/"},
-                    "auto_return": "approved",
-                    "notification_url": "https://wsqebbwjmiwiscbkmawy.supabase.co/functions/v1/webhook-pagamento" 
-                }
-                res = SDK.preference().create(pref_data)
-                
-                if res["status"] in [200, 201]:
-                    link_mp = res["response"]["init_point"]
-                    st.session_state.link_ativo = link_mp
-                    st.components.v1.html(f"<script>window.open('{link_mp}', '_blank');</script>", height=0)
-                else:
-                    st.error("Erro ao gerar link de pagamento.")
+                if 'link_ativo' in st.session_state:
+                    st.info("🕒 Checkout aberto em nova guia. Caso não tenha aberto, clique abaixo:")
+                    st.markdown(f'<div style="text-align:center;"><a href="{st.session_state.link_ativo}" target="_blank"><button style="padding:12px; background-color:#2e66f1; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">ABRIR PAGAMENTO MANUALMENTE</button></a></div>', unsafe_allow_html=True)
+                    with st.status("Aguardando confirmação do pagamento...") as status:
+                        for _ in range(60):
+                            time.sleep(3)
+                            check = supabase.table("vendas").select("status").eq("external_reference", st.session_state.ref_venda).execute()
+                            if check.data and check.data[0]['status'] == 'pago':
+                                status.update(label="✅ Pago!", state="complete")
+                                st.rerun()
 
-            if 'link_ativo' in st.session_state:
-                st.info("🕒 Checkout aberto em nova guia. Caso não tenha aberto, clique abaixo:")
-                st.markdown(f'<div style="text-align:center;"><a href="{st.session_state.link_ativo}" target="_blank"><button style="padding:12px; background-color:#2e66f1; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">ABRIR PAGAMENTO MANUALMENTE</button></a></div>', unsafe_allow_html=True)
-                
-                with st.status("Aguardando confirmação do pagamento...") as status:
-                    for _ in range(60):
-                        time.sleep(3)
-                        check = supabase.table("vendas").select("status").eq("external_reference", st.session_state.ref_venda).execute()
-                        if check.data and check.data[0]['status'] == 'pago':
-                            status.update(label="✅ Pago!", state="complete")
-                            st.rerun()
-
-# --- RODAPÉ ---
-if not df_f.empty:
-    st.subheader("📊 Raio-X da Base")
+    # 3. Análise Visual (Só aparece se tiver filtros)
+    st.divider()
+    st.subheader("📊 Raio-X da Base Selecionada")
     g1, g2, g3 = st.columns(3)
     with g1:
         st.write("**Top Cidades**")
