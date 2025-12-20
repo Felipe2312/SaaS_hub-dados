@@ -13,7 +13,7 @@ try:
     SUPABASE_URL = st.secrets["supabase"]["url"]
     SUPABASE_KEY = st.secrets["supabase"]["key"]
 except Exception as e:
-    st.error("Erro: Verifique os Secrets no painel do Streamlit Cloud (ACCESS_TOKEN, SUPABASE_URL, SUPABASE_KEY).")
+    st.error("Erro: Verifique os Secrets no painel do Streamlit Cloud.")
     st.stop()
 
 SDK = mercadopago.SDK(ACCESS_TOKEN)
@@ -52,7 +52,7 @@ def get_all_data():
     df = pd.DataFrame(all_rows)
     if not df.empty:
         df['nota'] = pd.to_numeric(df['nota'].str.replace(',', '.'), errors='coerce').fillna(0)
-        df['data_extracao'] = pd.to_datetime(df['data_extracao'], errors='coerce').dt.strftime('%d/%m/%Y')
+        df['data_extracao'] = pd.to_datetime(df['data_extracao']).dt.strftime('%d/%m/%Y')
         df['bairro'] = df['bairro'].fillna('Não informado')
         df['estado'] = df['estado'].fillna('N/A')
         df['categoria_google'] = df['categoria_google'].fillna('Não identificada')
@@ -60,53 +60,49 @@ def get_all_data():
     return df
 
 # ==========================================
-# 🖥️ INTERFACE E FILTROS
+# 🖥️ INTERFACE E FILTROS DINÂMICOS
 # ==========================================
 st.set_page_config(page_title="Leads Intelligence B2B", layout="wide", page_icon="📈")
 df_raw = get_all_data()
 
-if df_raw.empty:
-    st.info("Sincronizando base de dados...")
-    st.stop()
-
 st.title("🚀 Hub de Inteligência B2B")
-st.caption("Filtre leads qualificados e adquira a base instantaneamente via PIX.")
+st.caption("Filtre leads qualificados e adquira a base instantaneamente.")
 
-# --- PAINEL DE FILTROS ---
 with st.container(border=True):
     c1, c2, c3 = st.columns([2, 2, 1])
-    with c1: busca_nome = st.text_input("Empresa", placeholder="Nome da empresa...")
+    with c1: busca_nome = st.text_input("Empresa", placeholder="Buscar por nome...")
     with c2: nota_range = st.select_slider("Avaliação Google", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
     with c3: filtro_site = st.radio("Website", ["Todos", "Sim", "Não"], horizontal=True)
 
     t1, t2 = st.tabs(["🎯 Segmentação", "📍 Localização"])
+    
+    df_temp = df_raw.copy()
+    if busca_nome: df_temp = df_temp[df_temp['nome'].str.contains(busca_nome, case=False, na=False)]
+    if filtro_site == "Sim": df_temp = df_temp[df_temp['site'].notnull()]
+    elif filtro_site == "Não": df_temp = df_temp[df_temp['site'].isnull()]
+    df_temp = df_temp[(df_temp['nota'] >= nota_range[0]) & (df_temp['nota'] <= nota_range[1])]
+
     with t1:
         col_a, col_b = st.columns(2)
-        with col_a: f_macro = st.multiselect("Setor", sorted(df_raw['Segmento'].unique()))
+        with col_a:
+            f_macro = st.multiselect("Setor Principal", sorted(df_temp['Segmento'].unique()))
         with col_b:
-            df_s = df_raw[df_raw['Segmento'].isin(f_macro)] if f_macro else df_raw
-            f_google = st.multiselect("Nicho (Google)", sorted(df_s['categoria_google'].unique()))
+            df_nicho = df_temp[df_temp['Segmento'].isin(f_macro)] if f_macro else df_temp
+            f_google = st.multiselect("Nicho Específico (Google)", sorted(df_nicho['categoria_google'].unique()))
+            
     with t2:
+        df_loc = df_nicho[df_nicho['categoria_google'].isin(f_google)] if f_google else df_nicho
         col_d, col_e, col_f = st.columns(3)
-        with col_d: f_uf = st.multiselect("UF", sorted(df_s['estado'].unique()))
+        with col_d:
+            f_uf = st.multiselect("Estado (UF)", sorted(df_loc['estado'].unique()))
         with col_e:
-            df_l = df_s[df_s['estado'].isin(f_uf)] if f_uf else df_s
-            f_cidade = st.multiselect("Cidade", sorted(df_l['cidade'].unique()))
+            df_cid = df_loc[df_loc['estado'].isin(f_uf)] if f_uf else df_loc
+            f_cidade = st.multiselect("Cidade", sorted(df_cid['cidade'].unique()))
         with col_f:
-            df_l = df_l[df_l['cidade'].isin(f_cidade)] if f_cidade else df_l
-            f_bairro = st.multiselect("Bairro", sorted(df_l['bairro'].unique()))
+            df_bai = df_cid[df_cid['cidade'].isin(f_cidade)] if f_cidade else df_cid
+            f_bairro = st.multiselect("Bairro", sorted(df_bai['bairro'].unique()))
 
-# --- PROCESSAMENTO DOS FILTROS ---
-df_f = df_raw.copy()
-if f_macro: df_f = df_f[df_f['Segmento'].isin(f_macro)]
-if f_google: df_f = df_f[df_f['categoria_google'].isin(f_google)]
-if f_uf: df_f = df_f[df_f['estado'].isin(f_uf)]
-if f_cidade: df_f = df_f[df_f['cidade'].isin(f_cidade)]
-if f_bairro: df_f = df_f[df_f['bairro'].isin(f_bairro)]
-if busca_nome: df_f = df_f[df_f['nome'].str.contains(busca_nome, case=False, na=False)]
-if filtro_site == "Sim": df_f = df_f[df_f['site'].notnull()]
-elif filtro_site == "Não": df_f = df_f[df_f['site'].isnull()]
-df_f = df_f[(df_f['nota'] >= nota_range[0]) & (df_f['nota'] <= nota_range[1])]
+df_f = df_bai[df_bai['bairro'].isin(f_bairro)] if f_bairro else df_bai
 
 # --- PRECIFICAÇÃO ---
 total_leads = len(df_f)
@@ -117,100 +113,111 @@ valor_br = f"R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace(
 st.divider()
 
 # ==========================================
-# 💰 LÓGICA DE PAGAMENTO (BOTÃO ÚNICO)
+# 💰 LÓGICA DE PAGAMENTO (REDIRECIONAMENTO + LINK)
 # ==========================================
-
-# 1. Garantir referência única de venda na sessão
 if 'ref_venda' not in st.session_state:
     st.session_state.ref_venda = f"REF_{int(time.time())}"
 
-# 2. Verificar status no Banco (Webhook) e na URL (Retorno Manual)
 check_banco = supabase.table("vendas").select("status").eq("external_reference", st.session_state.ref_venda).execute()
 pago_no_banco = True if (check_banco.data and check_banco.data[0]['status'] == 'pago') else False
-pago_na_url = st.query_params.get("status") in ["approved", "success"]
 
-if pago_no_banco or pago_na_url:
+if pago_no_banco:
     st.balloons()
-    st.success(f"✅ Pagamento Confirmado! Total de {total_leads} leads liberados para download.")
-    
+    st.success(f"✅ Pagamento Confirmado! {f'{total_leads:,}'.replace(',', '.')} leads liberados.")
     col_dl1, col_dl2 = st.columns(2)
     with col_dl1:
-        st.download_button("💾 Baixar CSV Completo", df_f.to_csv(index=False).encode('utf-8-sig'), f"leads_{st.session_state.ref_venda}.csv", "text/csv", use_container_width=True)
+        st.download_button("💾 Baixar CSV", df_f.to_csv(index=False).encode('utf-8-sig'), f"leads_{st.session_state.ref_venda}.csv", "text/csv", use_container_width=True)
     with col_dl2:
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df_f.to_excel(writer, index=False, sheet_name='Leads')
-        st.download_button("📊 Baixar Excel Completo", output.getvalue(), f"leads_{st.session_state.ref_venda}.xlsx", use_container_width=True)
-    
-    if st.button("🔄 Realizar Nova Busca (Limpar)"):
+        st.download_button("📊 Baixar Excel", output.getvalue(), f"leads_{st.session_state.ref_venda}.xlsx", use_container_width=True)
+    if st.button("🔄 Nova Busca"):
         st.session_state.clear()
         st.query_params.clear()
         st.rerun()
 else:
     m1, m2, m3 = st.columns(3)
-    m1.metric("Leads Encontrados", f"{total_leads:,}")
-    m2.metric("Preço Unitário", f"R$ {preco_un:.2f}")
+    m1.metric("Leads Selecionados", f"{total_leads:,}".replace(",", "."))
+    m2.metric("Preço Unitário", f"R$ {preco_un:.2f}".replace(".", ","))
     m3.metric("Total a Pagar", valor_br)
 
     if total_leads > 0:
         with st.container(border=True):
-            st.warning("🔒 O download será liberado automaticamente após a confirmação do pagamento.")
-            
-            # BOTÃO ÚNICO DE PAGAMENTO
-            if st.button("💳 PAGAR COM PIX AGORA", type="primary", use_container_width=True):
-                # A. Registra intenção no Supabase
-                supabase.table("vendas").upsert({
-                    "external_reference": st.session_state.ref_venda, 
-                    "valor": valor_total, 
-                    "status": "pendente"
-                }).execute()
+            if st.button("💳 FINALIZAR PEDIDO E BAIXAR AGORA", type="primary", use_container_width=True):
+                supabase.table("vendas").upsert({"external_reference": st.session_state.ref_venda, "valor": valor_total, "status": "pendente"}).execute()
                 
-                # B. Cria preferência no Mercado Pago
-                APP_URL = "https://leads-brasil.streamlit.app/" # SUA URL OFICIAL
                 pref_data = {
                     "items": [{"title": f"Base {total_leads} Leads B2B", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
                     "external_reference": st.session_state.ref_venda,
-                    "back_urls": {"success": APP_URL, "failure": APP_URL, "pending": APP_URL},
+                    "back_urls": {"success": "https://leads-brasil.streamlit.app/"},
                     "auto_return": "approved",
                 }
+                res = SDK.preference().create(pref_data)
                 
-                try:
-                    res = SDK.preference().create(pref_data)
-                    if res["status"] in [200, 201]:
-                        link_mp = res["response"]["init_point"]
-                        st.session_state.link_ativo = link_mp
-                        # Abre o link em nova aba usando JS/HTML
-                        st.markdown(f'<a href="{link_mp}" target="_blank" style="text-decoration:none;"><button style="width:100%; cursor:pointer; background-color:#2e66f1; color:white; border:none; padding:12px; border-radius:5px; font-weight:bold;">CLIQUE AQUI PARA ABRIR O PIX</button></a>', unsafe_allow_html=True)
-                    else:
-                        st.error("Erro ao gerar link no Mercado Pago.")
-                except Exception as e:
-                    st.error(f"Erro de conexão: {e}")
+                if res["status"] in [200, 201]:
+                    link_mp = res["response"]["init_point"]
+                    st.session_state.link_ativo = link_mp
+                    
+                    # Tenta abrir automático
+                    st.components.v1.html(f"<script>window.open('{link_mp}', '_blank');</script>", height=0)
+                else:
+                    st.error("Erro ao gerar pagamento.")
 
-            # MONITORAMENTO EM TEMPO REAL (Aparece se o link foi gerated)
+            # Se o link foi gerado, mostra a opção manual e o monitoramento
             if 'link_ativo' in st.session_state:
-                with st.status("Monitorando pagamento PIX...", expanded=True) as status_box:
-                    st.write("Detectaremos seu pagamento assim que for confirmado pelo banco.")
-                    for _ in range(60): # Monitora por 2 minutos
+                st.info("🕒 Aguardando pagamento...")
+                st.markdown(f'''
+                    <div style="text-align: center; padding: 10px; border: 1px dashed #2e66f1; border-radius: 5px;">
+                        <p style="margin-bottom: 5px;">Não foi redirecionado?</p>
+                        <a href="{st.session_state.link_ativo}" target="_blank" style="text-decoration: none;">
+                            <button style="background-color: #2e66f1; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold;">
+                                CLIQUE AQUI PARA PAGAR
+                            </button>
+                        </a>
+                    </div>
+                ''', unsafe_allow_html=True)
+                
+                with st.status("Verificando status do pagamento...", expanded=True) as status_box:
+                    for _ in range(60):
                         time.sleep(2)
                         check = supabase.table("vendas").select("status").eq("external_reference", st.session_state.ref_venda).execute()
                         if check.data and check.data[0]['status'] == 'pago':
                             status_box.update(label="✅ Pagamento Detectado!", state="complete")
                             st.rerun()
-
     else:
-        st.error("Selecione leads nos filtros para prosseguir.")
+        st.error("Filtre leads para habilitar o pagamento.")
 
 st.divider()
-st.subheader("📋 Amostra dos Dados (Top 50)")
-st.dataframe(df_f[['nome', 'Segmento', 'categoria_google', 'bairro', 'cidade', 'estado', 'nota']].head(50), use_container_width=True, hide_index=True)
 
-# --- ANÁLISE VISUAL ---
+# --- ANÁLISE VISUAL (GRÁFICOS HORIZONTAIS) ---
 if not df_f.empty:
     st.subheader("📊 Distribuição da Seleção")
-    g1, g2 = st.columns(2)
+    g1, g2, g3 = st.columns(3)
     with g1:
         st.write("**Top Cidades**")
-        st.bar_chart(df_f['cidade'].value_counts().head(10), color="#2E66F1")
+        st.bar_chart(df_f['cidade'].value_counts().head(10), color="#2E66F1", horizontal=True)
     with g2:
         st.write("**Top Bairros**")
-        st.bar_chart(df_f['bairro'].value_counts().head(10), color="#2ecc71")
+        st.bar_chart(df_f['bairro'].value_counts().head(10), color="#2ecc71", horizontal=True)
+    with g3:
+        st.write("**Setores**")
+        st.bar_chart(df_f['Segmento'].value_counts(), color="#f39c12", horizontal=True)
+
+# --- DATAFRAME COM NOMES PROFISSIONAIS ---
+st.subheader("📋 Amostra dos Dados (Top 50)")
+colunas_exibicao = {
+    'nome': 'Empresa',
+    'Segmento': 'Setor',
+    'categoria_google': 'Nicho',
+    'bairro': 'Bairro',
+    'cidade': 'Cidade',
+    'estado': 'UF',
+    'nota': 'Nota',
+    'data_extracao': 'Última Atualização'
+}
+st.dataframe(
+    df_f[list(colunas_exibicao.keys())].rename(columns=colunas_exibicao).head(50), 
+    use_container_width=True, 
+    hide_index=True
+)
