@@ -4,18 +4,19 @@ from supabase import create_client
 import io
 import mercadopago
 import time
+import os
 
 # ==========================================
 # 🔐 CONFIGURAÇÕES E CREDENCIAIS
 # ==========================================
 try:
-    # Coletando segredos do .streamlit/secrets.toml
-    SUPABASE_URL = st.secrets["supabase"]["url"]
-    SUPABASE_KEY = st.secrets["supabase"]["key"]
-    MP_ACCESS_TOKEN = st.secrets["mercado_pago"]["access_token"]
+    # Tenta ler do ambiente (Docker/Servidor) ou dos secrets locais
+    SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets["supabase"]["url"]
+    SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets["supabase"]["key"]
+    MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN") or st.secrets["mercado_pago"]["access_token"]
     NOME_MARCA = "DiskLeads"
 except Exception as e:
-    st.error("Erro: Verifique se todos os secrets estão configurados corretamente.")
+    st.error("Erro: Verifique se todos os secrets ou variáveis de ambiente estão configurados.")
     st.stop()
 
 # Inicialização dos clientes
@@ -37,6 +38,48 @@ def normalizar_categoria(cat_google):
     if any(x in cat for x in ['loja', 'varejo', 'comércio']): return "Varejo & Comércio"
     return "Outros"
 
+def fmt_real(valor):
+    """Formata float para moeda brasileira R$ 1.234,56"""
+    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+def calcular_preco(qtd):
+    """Calcula preço dinâmico com descontos progressivos"""
+    # Preço Base (Ancoragem - O preço "de mercado")
+    PRECO_BASE_UNITARIO = 0.50 
+    
+    # Tabela de Preços Dinâmica
+    if qtd <= 200:
+        preco_unitario = 0.35
+        nivel = "Básico"
+        prox_nivel = 201
+    elif qtd <= 1000:
+        preco_unitario = 0.25
+        nivel = "Bronze"
+        prox_nivel = 1001
+    elif qtd <= 5000:
+        preco_unitario = 0.15
+        nivel = "Prata"
+        prox_nivel = 5001
+    else:
+        preco_unitario = 0.08 # Preço matador para grandes volumes
+        nivel = "Ouro"
+        prox_nivel = None
+
+    valor_tabela = qtd * PRECO_BASE_UNITARIO
+    valor_final = qtd * preco_unitario
+    desconto_total = valor_tabela - valor_final
+    porcentagem_off = int((desconto_total / valor_tabela) * 100) if valor_tabela > 0 else 0
+
+    return {
+        "unitario": preco_unitario,
+        "total": valor_final,
+        "total_tabela": valor_tabela,
+        "economia": desconto_total,
+        "off": porcentagem_off,
+        "nivel": nivel,
+        "prox": prox_nivel
+    }
+
 @st.cache_data(ttl=600)
 def get_all_data():
     all_rows = []
@@ -52,7 +95,6 @@ def get_all_data():
     df = pd.DataFrame(all_rows)
     if not df.empty:
         df['nota'] = pd.to_numeric(df['nota'].str.replace(',', '.'), errors='coerce').fillna(0)
-        # Proteção para coluna de data
         if 'data_extracao' in df.columns:
             df['data_extracao'] = pd.to_datetime(df['data_extracao'], errors='coerce').dt.strftime('%d/%m/%Y')
         df['bairro'] = df['bairro'].fillna('Não informado')
@@ -106,11 +148,62 @@ with st.container(border=True):
 
 df_f = df_bai[df_bai['bairro'].isin(f_bairro)] if f_bairro else df_bai
 
-# --- PRECIFICAÇÃO ---
+# ==========================================
+# 💲 PRECIFICAÇÃO & CARRINHO (NOVO VISUAL)
+# ==========================================
 total_leads = len(df_f)
-preco_un = 0.30 if total_leads <= 500 else (0.20 if total_leads <= 2000 else 0.12)
-valor_total = round(total_leads * preco_un, 2)
-valor_br = f"R$ {valor_total:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+resumo_preco = calcular_preco(total_leads)
+valor_total = round(resumo_preco['total'], 2) # Valor final para o Mercado Pago
+
+if total_leads > 0:
+    st.divider()
+    with st.container(border=True):
+        c_topo1, c_topo2 = st.columns([3, 1])
+        with c_topo1:
+            st.markdown(f"### 🛍️ Resumo do Pedido")
+            st.caption("Dados extraídos em tempo real e validados.")
+        with c_topo2:
+            # Badge de Nível (Gamificação)
+            cor_badge = "#FFD700" if resumo_preco['nivel'] == "Ouro" else ("#C0C0C0" if resumo_preco['nivel'] == "Prata" else "#CD7F32")
+            st.markdown(f"""
+                <div style="text-align:right;">
+                    <span style="background-color:{cor_badge}; color:black; padding: 4px 10px; border-radius:15px; font-size:12px; font-weight:bold;">
+                        NÍVEL {resumo_preco['nivel'].upper()}
+                    </span>
+                </div>
+            """, unsafe_allow_html=True)
+
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Leads Selecionados", f"{total_leads:,}".replace(",", "."))
+        with col2:
+            st.metric("Preço por Lead", fmt_real(resumo_preco['unitario']))
+        with col3:
+            # Preço riscado + Preço real
+            st.markdown(f"""
+            <p style="margin-bottom: -5px; font-size: 14px; color: #ff4b4b; text-decoration: line-through;">
+                {fmt_real(resumo_preco['total_tabela'])}
+            </p>
+            <p style="font-size: 26px; font-weight: bold; color: #2ecc71; margin: 0;">
+                {fmt_real(resumo_preco['total'])}
+            </p>
+            """, unsafe_allow_html=True)
+            st.caption("Total a Pagar")
+        with col4:
+            if resumo_preco['off'] > 0:
+                st.metric("Você Economiza", f"{resumo_preco['off']}%", delta=fmt_real(resumo_preco['economia']))
+            else:
+                st.metric("Status", "Tabela Cheia")
+
+        # Barra de Progresso
+        if resumo_preco['prox']:
+            faltam = resumo_preco['prox'] - total_leads
+            progresso = min(total_leads / resumo_preco['prox'], 1.0)
+            st.progress(progresso)
+            st.caption(f"💡 Adicione mais **{faltam} leads** para desbloquear o próximo desconto!")
+else:
+    st.divider()
+    st.warning("⚠️ Utilize os filtros acima para selecionar os leads que deseja comprar.")
 
 st.divider()
 
@@ -129,7 +222,6 @@ if pago:
     st.balloons()
     st.success(f"✅ Pagamento Confirmado! Os leads foram enviados para {dados_venda['email_cliente']}")
     
-    # Download direto para o usuário que permaneceu na página
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         df_f.to_excel(writer, index=False, sheet_name='Leads')
@@ -139,28 +231,22 @@ if pago:
         st.session_state.clear()
         st.rerun()
 else:
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Leads Selecionados", f"{total_leads:,}".replace(",", "."))
-    m2.metric("Preço Unitário", f"R$ {preco_un:.2f}".replace(".", ","))
-    m3.metric("Total a Pagar", valor_br)
-
     if total_leads > 0:
         with st.container(border=True):
-            st.subheader("📬 Onde deseja receber os dados?")
+            st.subheader("📬 Finalizar Compra")
             ce1, ce2 = st.columns(2)
             with ce1: email_input = st.text_input("Seu E-mail")
             with ce2: email_confirm = st.text_input("Confirme seu E-mail")
             
             pode_prosseguir = (email_input == email_confirm) and ("@" in email_input)
 
-            if st.button("💳 FINALIZAR PEDIDO E RECEBER POR E-MAIL", type="primary", use_container_width=True, disabled=not pode_prosseguir):
-                # 1. Gerar Excel e subir para o Storage (Bucket: leads_pedidos)
+            if st.button("💳 IR PARA PAGAMENTO SEGURO", type="primary", use_container_width=True, disabled=not pode_prosseguir):
+                # 1. Gerar Excel e subir para o Storage
                 output_file = io.BytesIO()
                 df_f.to_excel(output_file, index=False)
                 nome_arquivo = f"{st.session_state.ref_venda}.xlsx"
                 
-                # Upload para o Supabase Storage
-                # Upload para o Supabase Storage com permissão de sobrescrever (upsert)
+                # Upload com Upsert
                 supabase.storage.from_('leads_pedidos').upload(
                     path=nome_arquivo, 
                     file=output_file.getvalue(), 
@@ -168,29 +254,39 @@ else:
                 )
                 url_publica = supabase.storage.from_('leads_pedidos').get_public_url(nome_arquivo)
 
-                # 2. Salvar venda no Banco (Pendente)
+                # 2. Registra JSON de filtros para o Scraper Local usar
+                filtros_cliente = {
+                    "setor": f_macro,
+                    "nicho": f_google,
+                    "cidade": f_cidade,
+                    "bairro": f_bairro
+                }
+
+                # 3. Salva venda no Banco
                 supabase.table("vendas").upsert({
                     "external_reference": st.session_state.ref_venda,
                     "valor": valor_total,
                     "status": "pendente",
                     "email_cliente": email_input,
-                    "url_arquivo": url_publica
+                    "url_arquivo": url_publica,
+                    "enviado": False,
+                    # Se você ainda não criou a coluna 'filtros_json' no banco, comente a linha abaixo:
+                    # "filtros_json": filtros_cliente 
                 }).execute()
 
-                # 3. Criar Preferência no Mercado Pago
+                # 4. Criar Preferência no Mercado Pago
                 pref_data = {
                     "items": [{"title": f"Base {total_leads} Leads - {NOME_MARCA}", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
                     "external_reference": st.session_state.ref_venda,
                     "back_urls": {"success": "https://leads-brasil.streamlit.app/"},
                     "auto_return": "approved",
-                    "notification_url": "https://wsqebbwjmiwiscbkmawy.supabase.co/functions/v1/smooth-processor" # COLOQUE O NOME REAL DA SUA FUNÇÃO AQUI
+                    "notification_url": "https://wsqebbwjmiwiscbkmawy.supabase.co/functions/v1/webhook-pagamento" 
                 }
                 res = SDK.preference().create(pref_data)
                 
                 if res["status"] in [200, 201]:
                     link_mp = res["response"]["init_point"]
                     st.session_state.link_ativo = link_mp
-                    # Abre em nova guia automático
                     st.components.v1.html(f"<script>window.open('{link_mp}', '_blank');</script>", height=0)
                 else:
                     st.error("Erro ao gerar link de pagamento.")
@@ -206,14 +302,10 @@ else:
                         if check.data and check.data[0]['status'] == 'pago':
                             status.update(label="✅ Pago!", state="complete")
                             st.rerun()
-    else:
-        st.error("Selecione leads para habilitar o pagamento.")
 
-st.divider()
-
-# --- ANÁLISE VISUAL ---
+# --- ANÁLISE VISUAL (Final da Página) ---
 if not df_f.empty:
-    st.subheader("📊 Distribuição da Seleção")
+    st.subheader("📊 Raio-X da Base Selecionada")
     g1, g2, g3 = st.columns(3)
     with g1:
         st.write("**Top Cidades**")
@@ -227,6 +319,5 @@ if not df_f.empty:
 
 st.subheader("📋 Amostra dos Dados (Top 50)")
 colunas_exibicao = {'nome': 'Empresa', 'Segmento': 'Setor', 'categoria_google': 'Nicho', 'bairro': 'Bairro', 'cidade': 'Cidade', 'estado': 'UF', 'nota': 'Nota'}
-# Garante exibição apenas de colunas existentes
 cols_exists = [c for c in colunas_exibicao.keys() if c in df_f.columns]
 st.dataframe(df_f[cols_exists].rename(columns=colunas_exibicao).head(50), use_container_width=True, hide_index=True)
