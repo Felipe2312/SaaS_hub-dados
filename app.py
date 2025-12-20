@@ -26,7 +26,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 SDK = mercadopago.SDK(MP_ACCESS_TOKEN)
 
 # ==========================================
-# 🧠 FUNÇÕES DE SUPORTE (NOVA LÓGICA DE PREÇO + CATEGORIAS)
+# 🧠 FUNÇÕES DE SUPORTE
 # ==========================================
 
 def normalizar_categoria(cat_google):
@@ -105,7 +105,7 @@ def get_all_data():
     return df
 
 # ==========================================
-# 🖥️ HEADER E EXPLICAÇÃO (VISUAL NOVO)
+# 🖥️ HEADER E EXPLICAÇÃO
 # ==========================================
 df_raw = get_all_data()
 
@@ -121,7 +121,7 @@ with st.expander("ℹ️ **O que eu vou receber? (Detalhes dos Dados)**", expand
         #### 📦 Conteúdo do Arquivo
         Você receberá um arquivo **Excel** contendo:
         * ✅ **Nome da Empresa**
-        * ✅ **Telefone** (Celulares/WhatsApp)
+        * ✅ **Telefone** (Misto: Linhas Fixas e Celulares/WhatsApp)
         * ✅ **Endereço Completo** (Rua, Bairro, Cidade, UF, CEP)
         * ✅ **Website** e Link do Google Maps
         * ✅ **Avaliação** e Nicho de Atuação
@@ -132,7 +132,7 @@ with st.expander("ℹ️ **O que eu vou receber? (Detalhes dos Dados)**", expand
         df_exemplo = pd.DataFrame({
             "Empresa": ["Padaria Pão Dourado", "Auto Center Silva"],
             "Telefone": ["(11) 99999-1234 📱", "(21) 3344-5566 ☎️"],
-            "Nicho": ["Padaria", "Oficina Mecânica"],
+            "Tipo": ["Celular/Zap", "Fixo"],
             "Cidade": ["São Paulo", "Rio de Janeiro"],
         })
         st.dataframe(df_exemplo, hide_index=True, use_container_width=True)
@@ -268,24 +268,25 @@ else:
             with st.container(border=True):
                 st.subheader("📬 Finalizar Compra")
                 ce1, ce2 = st.columns(2)
-                with ce1: email_input = st.text_input("Seu E-mail")
-                with ce2: email_confirm = st.text_input("Confirme seu E-mail")
                 
-                # --- NOVO: Validação Visual de Email ---
+                # --- CAMPOS COM PLACEHOLDER ---
+                with ce1: 
+                    email_input = st.text_input("Seu E-mail", placeholder="seu@email.com")
+                with ce2: 
+                    email_confirm = st.text_input("Confirme seu E-mail", placeholder="seu@email.com")
+                
+                # Validação Visual
                 if email_input and email_confirm and (email_input != email_confirm):
                     st.warning("⚠️ Os e-mails não coincidem.")
-                # ---------------------------------------
 
                 pode_prosseguir = (email_input == email_confirm) and ("@" in email_input)
 
                 if st.button("💳 IR PARA PAGAMENTO SEGURO", type="primary", use_container_width=True, disabled=not pode_prosseguir):
-                    # === INICIO DO BLOCO ORIGINAL ===
-                    # 1. Gerar Excel e subir para o Storage (Bucket: leads_pedidos)
+                    # 1. Gerar Excel e subir para o Storage
                     output_file = io.BytesIO()
                     df_f.to_excel(output_file, index=False)
                     nome_arquivo = f"{st.session_state.ref_venda}.xlsx"
                     
-                    # Upload para o Supabase Storage
                     supabase.storage.from_('leads_pedidos').upload(
                         path=nome_arquivo, 
                         file=output_file.getvalue(), 
@@ -293,7 +294,7 @@ else:
                     )
                     url_publica = supabase.storage.from_('leads_pedidos').get_public_url(nome_arquivo)
 
-                    # 2. Salvar venda no Banco (Pendente)
+                    # 2. Salvar venda no Banco
                     supabase.table("vendas").upsert({
                         "external_reference": st.session_state.ref_venda,
                         "valor": valor_total,
@@ -318,7 +319,6 @@ else:
                         st.components.v1.html(f"<script>window.open('{link_mp}', '_blank');</script>", height=0)
                     else:
                         st.error("Erro ao gerar link de pagamento.")
-                    # === FIM DO BLOCO ORIGINAL ===
 
                 if 'link_ativo' in st.session_state:
                     st.info("🕒 Checkout aberto em nova guia. Caso não tenha aberto, clique abaixo:")
@@ -350,3 +350,4 @@ else:
     colunas_exibicao = {'nome': 'Empresa', 'Segmento': 'Setor', 'categoria_google': 'Nicho', 'bairro': 'Bairro', 'cidade': 'Cidade', 'estado': 'UF', 'nota': 'Nota'}
     cols_exists = [c for c in colunas_exibicao.keys() if c in df_f.columns]
     st.dataframe(df_f[cols_exists].rename(columns=colunas_exibicao).head(50), use_container_width=True, hide_index=True)
+    
