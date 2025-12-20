@@ -224,7 +224,7 @@ else:
             with c3:
                 st.caption("Total a Pagar")
                 if resumo_preco['pct_off'] > 0:
-                     st.markdown(f"""
+                      st.markdown(f"""
                     <div style="display: flex; align-items: center; gap: 10px;">
                         <span style="text-decoration: line-through; color: #ff4b4b; font-size: 14px;">
                             {fmt_real(resumo_preco['total_ancora'])}
@@ -244,9 +244,9 @@ else:
                 progresso = min(total_leads / meta, 0.98) 
                 st.write("") 
                 st.progress(progresso)
-                st.info(f"💡 Falta pouco! Adicione apenas **{faltam} leads** para entrar na próxima faixa e pagar **{fmt_real(prox_preco)}/unid** (Redução extra de {economia_extra_pct}% no custo).")
+                st.info(f"💡Adicione **{faltam} leads** para entrar na próxima faixa e pagar **{fmt_real(prox_preco)}/unid** (Redução extra de {economia_extra_pct}% no custo).")
 
-        # 2. Área de Pagamento (USANDO SEU CÓDIGO ORIGINAL QUE FUNCIONA)
+        # 2. Área de Pagamento
         if 'ref_venda' not in st.session_state:
             st.session_state.ref_venda = f"REF_{int(time.time())}"
 
@@ -271,6 +271,11 @@ else:
                 with ce1: email_input = st.text_input("Seu E-mail")
                 with ce2: email_confirm = st.text_input("Confirme seu E-mail")
                 
+                # --- NOVO: Validação Visual de Email ---
+                if email_input and email_confirm and (email_input != email_confirm):
+                    st.warning("⚠️ Os e-mails não coincidem.")
+                # ---------------------------------------
+
                 pode_prosseguir = (email_input == email_confirm) and ("@" in email_input)
 
                 if st.button("💳 IR PARA PAGAMENTO SEGURO", type="primary", use_container_width=True, disabled=not pode_prosseguir):
@@ -280,7 +285,7 @@ else:
                     df_f.to_excel(output_file, index=False)
                     nome_arquivo = f"{st.session_state.ref_venda}.xlsx"
                     
-                    # Upload para o Supabase Storage (SEM MEXER NOS PARAMETROS)
+                    # Upload para o Supabase Storage
                     supabase.storage.from_('leads_pedidos').upload(
                         path=nome_arquivo, 
                         file=output_file.getvalue(), 
@@ -288,7 +293,7 @@ else:
                     )
                     url_publica = supabase.storage.from_('leads_pedidos').get_public_url(nome_arquivo)
 
-                    # 2. Salvar venda no Banco (Pendente) - SEM FILTROS JSON PARA NÃO QUEBRAR
+                    # 2. Salvar venda no Banco (Pendente)
                     supabase.table("vendas").upsert({
                         "external_reference": st.session_state.ref_venda,
                         "valor": valor_total,
@@ -303,7 +308,7 @@ else:
                         "external_reference": st.session_state.ref_venda,
                         "back_urls": {"success": "https://leads-brasil.streamlit.app/"},
                         "auto_return": "approved",
-                        "notification_url": "https://wsqebbwjmiwiscbkmawy.supabase.co/functions/v1/smooth-processor" # Mantive o nome original que funcionava
+                        "notification_url": "https://wsqebbwjmiwiscbkmawy.supabase.co/functions/v1/smooth-processor"
                     }
                     res = SDK.preference().create(pref_data)
                     
