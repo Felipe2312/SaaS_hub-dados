@@ -64,9 +64,9 @@ def calcular_preco(qtd):
     # TABELA DE PREÇOS AJUSTADA (MERCADO)
     tabela = [
         {"limite": 200, "preco": 0.35, "nome": "Iniciante"},
-        {"limite": 1000, "preco": 0.20, "nome": "Profissional"}, # Mais agressivo
-        {"limite": 5000, "preco": 0.10, "nome": "Business"},     # Muito atrativo
-        {"limite": float('inf'), "preco": 0.05, "nome": "Atacado"} # Preço "No-Brainer"
+        {"limite": 1000, "preco": 0.20, "nome": "Profissional"}, 
+        {"limite": 5000, "preco": 0.10, "nome": "Business"},     
+        {"limite": float('inf'), "preco": 0.05, "nome": "Atacado"} 
     ]
     faixa_atual = None
     prox_faixa_info = None
@@ -159,6 +159,7 @@ with st.expander("ℹ️ **O que eu vou receber e quanto custa?**", expanded=Fal
         """)
     with c_info2:
         st.markdown("#### 💲 Tabela de Preços")
+        # ATUALIZADO COM OS PREÇOS REAIS DO CÓDIGO
         st.markdown("""
         | Qtd | Preço/Lead |
         | :--- | :--- |
@@ -272,7 +273,6 @@ else:
                 st.markdown(f"<h3 style='color:#2ecc71; margin-top:0px'>{fmt_real(resumo_preco['total'])}</h3>", unsafe_allow_html=True)
 
             # === GAMIFICATION (PRÓXIMO NÍVEL) ===
-            # Recoloquei essa funcionalidade aqui
             if resumo_preco['prox_qtd']:
                 meta = resumo_preco['prox_qtd']
                 faltam = meta - total_leads
@@ -457,3 +457,27 @@ else:
     df_preview['Atualizado em'] = df_f['data_fmt']
     
     st.dataframe(df_preview.head(50), use_container_width=True, hide_index=True)
+
+# ==========================================
+# 🛡️ RODAPÉ E SUPORTE
+# ==========================================
+st.divider()
+col_f1, col_f2 = st.columns(2)
+
+with col_f1:
+    st.markdown("#### 📞 Precisa de Ajuda?")
+    st.markdown("Teve problemas com o pagamento ou download? Fale com o Felipe.")
+    st.markdown(f"📧 **E-mail:** [suporte.diskleads@gmail.com](mailto:suporte.diskleads@gmail.com) | [feliperiosamaral@gmail.com](mailto:feliperiosamaral@gmail.com)")
+    st.link_button("Falar no WhatsApp", "https://wa.me/5511963048466?text=Olá,%20preciso%20de%20ajuda%20com%20o%20DiskLeads")
+
+with col_f2:
+    st.markdown("#### ⚖️ Termos e Privacidade")
+    with st.expander("Ler Aviso Legal (LGPD)"):
+        st.caption("""
+        **Origem dos Dados:** Todos os dados fornecidos nesta plataforma são extraídos de fontes públicas acessíveis via internet (Google Maps), conforme permitido pela legislação brasileira para fins de prospecção B2B.
+        
+        **Uso dos Dados:** Ao adquirir a lista, você se compromete a utilizar os dados de forma ética, respeitando as leis de proteção de dados (LGPD) e as regras de contato comercial (Não Perturbe).
+        
+        **Garantia:** Oferecemos os dados "como estão" nas fontes públicas. A taxa de assertividade média é de 80-90%.
+        """)
+    st.caption(f"© 2025 {NOME_MARCA} - Todos os direitos reservados.")
