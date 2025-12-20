@@ -183,7 +183,7 @@ else:
                     "external_reference": st.session_state.ref_venda,
                     "back_urls": {"success": "https://leads-brasil.streamlit.app/"},
                     "auto_return": "approved",
-                    "notification_url": "https://wsqebbwjmiwiscbkmawy.supabase.co/functions/v1/webhook-pagamento" # COLOQUE O NOME REAL DA SUA FUNÇÃO AQUI
+                    "notification_url": "https://wsqebbwjmiwiscbkmawy.supabase.co/functions/v1/smooth-processor" # COLOQUE O NOME REAL DA SUA FUNÇÃO AQUI
                 }
                 res = SDK.preference().create(pref_data)
                 
