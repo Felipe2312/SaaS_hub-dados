@@ -132,7 +132,7 @@ with st.expander("ℹ️ **O que eu vou receber? (Detalhes dos Dados)**", expand
         df_exemplo = pd.DataFrame({
             "Empresa": ["Padaria Pão Dourado", "Auto Center Silva"],
             "Telefone": ["(11) 99999-1234 📱", "(21) 3344-5566 ☎️"],
-            "Tipo": ["Celular/Zap", "Fixo"],
+            "Nicho": ["Padaria", "Oficina Mecânica"],
             "Cidade": ["São Paulo", "Rio de Janeiro"],
         })
         st.dataframe(df_exemplo, hide_index=True, use_container_width=True)
