@@ -157,52 +157,92 @@ with st.expander("ℹ️ **O que eu vou receber e quanto custa?**", expanded=Fal
 st.divider()
 
 # ==========================================
-# 🔍 ÁREA DE FILTROS
+# 🔍 ÁREA DE FILTROS (HIERARQUIA INTELIGENTE)
 # ==========================================
 with st.container(border=True):
     st.subheader("🛠️ Configure sua Lista")
-    c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
     
+    # Filtros Globais
+    c1, c2, c3, c4 = st.columns([2, 2, 1, 1])
     with c1: busca_nome = st.text_input("Buscar por Nome (Opcional)", placeholder="Ex: Silva...")
     with c2: nota_range = st.select_slider("Qualidade Mínima", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
     with c3: filtro_site = st.radio("Tem Site?", ["Todos", "Sim", "Não"], horizontal=True)
     with c4: filtro_tel = st.radio("Tipo de Contato", ["Todos", "Só Celular", "Só Fixo"], horizontal=True)
 
     t1, t2 = st.tabs(["🎯 Segmentação", "📍 Localização"])
-    
-    df_temp = df_raw.copy()
-    
-    if busca_nome: df_temp = df_temp[df_temp['nome'].str.contains(busca_nome, case=False, na=False)]
-    if filtro_site == "Sim": df_temp = df_temp[df_temp['site'].notnull()]
-    elif filtro_site == "Não": df_temp = df_temp[df_temp['site'].isnull()]
-    df_temp = df_temp[(df_temp['nota'] >= nota_range[0]) & (df_temp['nota'] <= nota_range[1])]
 
-    if filtro_tel == "Só Celular":
-        df_temp = df_temp[df_temp['tipo_contato'] == 'Celular']
-    elif filtro_tel == "Só Fixo":
-        df_temp = df_temp[df_temp['tipo_contato'] == 'Fixo']
-
+    # 1. HIERARQUIA DE SEGMENTO (Setor -> Nicho)
     with t1:
         col_a, col_b = st.columns(2)
         with col_a:
-            f_macro = st.multiselect("Setor Principal", sorted(df_temp['Segmento'].unique()) if not df_temp.empty else [])
+            # Opções de Macro (Sempre baseado no RAW)
+            opts_macro = sorted(df_raw['Segmento'].unique()) if not df_raw.empty else []
+            f_macro = st.multiselect("Setor Principal", opts_macro)
         with col_b:
-            df_nicho = df_temp[df_temp['Segmento'].isin(f_macro)] if f_macro else df_temp
-            f_google = st.multiselect("Nicho Específico", sorted(df_nicho['categoria_google'].unique()) if not df_nicho.empty else [])
+            # Opções de Nicho (Depende do MACRO selecionado, mas não do local)
+            if f_macro:
+                df_nicho_opts = df_raw[df_raw['Segmento'].isin(f_macro)]
+            else:
+                df_nicho_opts = df_raw
             
-    with t2:
-        df_loc = df_nicho[df_nicho['categoria_google'].isin(f_google)] if f_google else df_nicho
-        col_d, col_e, col_f = st.columns(3)
-        with col_d:
-            f_uf = st.multiselect("Estado (UF)", sorted(df_loc['estado'].unique()) if not df_loc.empty else [])
-        with col_e:
-            df_cid = df_loc[df_loc['estado'].isin(f_uf)] if f_uf else df_loc
-            f_cidade = st.multiselect("Cidade", sorted(df_cid['cidade'].unique()) if not df_cid.empty else [])
-        with col_f:
-            df_bai = df_cid[df_cid['cidade'].isin(f_cidade)] if f_cidade else df_cid
-            f_bairro = st.multiselect("Bairro", sorted(df_bai['bairro'].unique()) if not df_bai.empty else [])
+            opts_nicho = sorted(df_nicho_opts['categoria_google'].unique()) if not df_nicho_opts.empty else []
+            f_google = st.multiselect("Nicho Específico", opts_nicho)
 
-df_f = df_bai[df_bai['bairro'].isin(f_bairro)] if f_bairro else df_bai
+    # 2. HIERARQUIA DE LOCALIZAÇÃO (UF -> Cidade -> Bairro)
+    with t2:
+        col_d, col_e, col_f = st.columns(3)
+        
+        # Estado (Sempre todas as opções)
+        opts_uf = sorted(df_raw['estado'].unique()) if not df_raw.empty else []
+        with col_d:
+            f_uf = st.multiselect("Estado (UF)", opts_uf)
+        
+        # Cidade (Depende APENAS do Estado)
+        if f_uf:
+            df_cid_opts = df_raw[df_raw['estado'].isin(f_uf)]
+        else:
+            df_cid_opts = df_raw
+        opts_cidade = sorted(df_cid_opts['cidade'].unique()) if not df_cid_opts.empty else []
+        
+        with col_e:
+            f_cidade = st.multiselect("Cidade", opts_cidade)
+        
+        # Bairro (Depende APENAS da Cidade)
+        if f_cidade:
+            df_bai_opts = df_cid_opts[df_cid_opts['cidade'].isin(f_cidade)]
+        else:
+            df_bai_opts = df_cid_opts
+        opts_bairro = sorted(df_bai_opts['bairro'].unique()) if not df_bai_opts.empty else []
+
+        with col_f:
+            f_bairro = st.multiselect("Bairro", opts_bairro)
+
+# --- APLICAÇÃO FINAL DOS FILTROS (INTERSEÇÃO) ---
+# Aqui juntamos tudo. Se o usuário escolheu "Acre" e "Pizzaria", vai dar 0 resultados,
+# mas as opções de filtro não sumiram enquanto ele navegava.
+
+df_f = df_raw.copy()
+
+# 1. Filtros de Texto/Qualidade
+if busca_nome: df_f = df_f[df_f['nome'].str.contains(busca_nome, case=False, na=False)]
+if filtro_site == "Sim": df_f = df_f[df_f['site'].notnull()]
+elif filtro_site == "Não": df_f = df_f[df_f['site'].isnull()]
+df_f = df_f[(df_f['nota'] >= nota_range[0]) & (df_f['nota'] <= nota_range[1])]
+
+# 2. Filtro de Telefone
+if filtro_tel == "Só Celular":
+    df_f = df_f[df_f['tipo_contato'] == 'Celular']
+elif filtro_tel == "Só Fixo":
+    df_f = df_f[df_f['tipo_contato'] == 'Fixo']
+
+# 3. Filtros de Segmento
+if f_macro: df_f = df_f[df_f['Segmento'].isin(f_macro)]
+if f_google: df_f = df_f[df_f['categoria_google'].isin(f_google)]
+
+# 4. Filtros de Localização
+if f_uf: df_f = df_f[df_f['estado'].isin(f_uf)]
+if f_cidade: df_f = df_f[df_f['cidade'].isin(f_cidade)]
+if f_bairro: df_f = df_f[df_f['bairro'].isin(f_bairro)]
 
 # ==========================================
 # 🚦 LÓGICA UX
@@ -228,7 +268,8 @@ else:
     st.divider()
 
     if total_leads == 0:
-        st.warning("⚠️ Nenhum lead encontrado com esses filtros.")
+        st.warning("⚠️ Nenhum lead encontrado com essa combinação exata de filtros.")
+        st.markdown("**Dica:** Tente relaxar os filtros de Bairro ou Nicho para encontrar mais resultados.")
     else:
         # Bloco de Preço Visual
         with st.container(border=True):
@@ -370,7 +411,7 @@ else:
                                 status.update(label="✅ Pago!", state="complete")
                                 st.rerun()
 
-    # 3. Análise Visual (COM MASCARAMENTO)
+    # 3. Análise Visual (Com Mascaramento)
     st.divider()
     st.subheader("📊 Raio-X da Base Selecionada")
     g1, g2, g3 = st.columns(3)
@@ -386,7 +427,6 @@ else:
 
     st.subheader("📋 Amostra dos Dados (Top 50)")
     
-    # Cria uma cópia para visualização (Preview) com telefone mascarado
     df_preview = df_f.head(50).copy()
     if 'telefone' in df_preview.columns:
         df_preview['telefone'] = df_preview['telefone'].apply(lambda x: str(x)[:-4] + "****" if x and len(str(x)) > 4 else "****")
