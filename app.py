@@ -48,14 +48,9 @@ def classificar_telefone_global(tel):
     if not tel: return "Indefinido"
     nums = "".join(filter(str.isdigit, str(tel)))
     
-    # Lógica com 55 (Seu padrão)
     if nums.startswith("55"):
-        # 13 dígitos = Celular (55 + 2 + 9 + 8)
         if len(nums) == 13 and nums[4] == '9': return "Celular"
-        # 12 dígitos = Fixo (55 + 2 + 8)
         elif len(nums) == 12: return "Fixo"
-    
-    # Fallback (sem 55)
     else:
         if len(nums) == 11 and nums[2] == '9': return "Celular"
         elif len(nums) == 10: return "Fixo"
@@ -63,12 +58,6 @@ def classificar_telefone_global(tel):
     return "Outro"
 
 def calcular_preco(qtd):
-    """
-    Nova lógica de Tiers (Escada de Volume)
-    Preço Base REAL = 0.35 (Sem desconto fictício)
-    """
-    PRECO_BASE_REAL = 0.35 # O preço inicial da tabela
-
     tabela = [
         {"limite": 200, "preco": 0.35, "nome": "Básico"},
         {"limite": 1000, "preco": 0.25, "nome": "Profissional"},
@@ -91,11 +80,10 @@ def calcular_preco(qtd):
     preco_unitario = faixa_atual["preco"]
     valor_total = qtd * preco_unitario
     
-    # Ancoragem correta: Compara com o preço base (0.35)
-    valor_ancora = qtd * PRECO_BASE_REAL
+    preco_ancora_ref = 0.50 if qtd < 50 else 0.35
+    valor_ancora = qtd * preco_ancora_ref
     
-    # Se o preço unitário atual for IGUAL ao base, desconto é zero.
-    if preco_unitario >= PRECO_BASE_REAL:
+    if preco_unitario >= 0.35:
         pct_economia_total = 0
     else:
         pct_economia_total = int(((valor_ancora - valor_total) / valor_ancora) * 100)
@@ -129,7 +117,6 @@ def get_all_data():
         df['estado'] = df['estado'].fillna('N/A')
         df['categoria_google'] = df['categoria_google'].fillna('Não identificada')
         df['Segmento'] = df['categoria_google'].apply(normalizar_categoria)
-        # Classificação no carregamento
         df['tipo_contato'] = df['telefone'].apply(classificar_telefone_global)
         
     return df
@@ -215,7 +202,6 @@ with st.container(border=True):
             df_bai = df_cid[df_cid['cidade'].isin(f_cidade)] if f_cidade else df_cid
             f_bairro = st.multiselect("Bairro", sorted(df_bai['bairro'].unique()) if not df_bai.empty else [])
 
-# Aplica filtros
 df_f = df_bai[df_bai['bairro'].isin(f_bairro)] if f_bairro else df_bai
 
 # ==========================================
@@ -226,7 +212,6 @@ filtros_ativos = any([busca_nome, f_macro, f_google, f_uf, f_cidade, f_bairro])
 
 if not filtros_ativos:
     st.info("👆 **Utilize os filtros acima para começar.** Selecione um Estado, Cidade ou Setor.")
-    
     st.markdown("### 🌎 Nossa Base em Números")
     m1, m2, m3 = st.columns(3)
     with m1: st.metric("Total de Empresas", f"{len(df_raw):,}".replace(",", "."))
@@ -260,7 +245,6 @@ else:
                 st.markdown(f"### {fmt_real(resumo_preco['unitario'])}")
             with c3:
                 st.caption("Total a Pagar")
-                # SÓ MOSTRA DESCONTO SE REALMENTE EXISTIR (> 0%)
                 if resumo_preco['pct_off'] > 0:
                       st.markdown(f"""
                     <div style="display: flex; align-items: center; gap: 10px;">
@@ -307,10 +291,8 @@ else:
                 st.subheader("📬 Finalizar Compra")
                 ce1, ce2 = st.columns(2)
                 
-                with ce1: 
-                    email_input = st.text_input("Seu E-mail", placeholder="seu@email.com")
-                with ce2: 
-                    email_confirm = st.text_input("Confirme seu E-mail", placeholder="seu@email.com")
+                with ce1: email_input = st.text_input("Seu E-mail", placeholder="seu@email.com")
+                with ce2: email_confirm = st.text_input("Confirme seu E-mail", placeholder="seu@email.com")
                 
                 if email_input and email_confirm and (email_input != email_confirm):
                     st.warning("⚠️ Os e-mails não coincidem.")
@@ -388,7 +370,7 @@ else:
                                 status.update(label="✅ Pago!", state="complete")
                                 st.rerun()
 
-    # 3. Análise Visual
+    # 3. Análise Visual (COM MASCARAMENTO)
     st.divider()
     st.subheader("📊 Raio-X da Base Selecionada")
     g1, g2, g3 = st.columns(3)
@@ -403,6 +385,13 @@ else:
         st.bar_chart(df_f['Segmento'].value_counts(), color="#f39c12", horizontal=True)
 
     st.subheader("📋 Amostra dos Dados (Top 50)")
+    
+    # Cria uma cópia para visualização (Preview) com telefone mascarado
+    df_preview = df_f.head(50).copy()
+    if 'telefone' in df_preview.columns:
+        df_preview['telefone'] = df_preview['telefone'].apply(lambda x: str(x)[:-4] + "****" if x and len(str(x)) > 4 else "****")
+
     colunas_exibicao = {'nome': 'Empresa', 'tipo_contato': 'Tipo', 'telefone': 'Telefone', 'Segmento': 'Setor', 'categoria_google': 'Nicho', 'bairro': 'Bairro', 'cidade': 'Cidade', 'estado': 'UF', 'nota': 'Nota'}
-    cols_exists = [c for c in colunas_exibicao.keys() if c in df_f.columns]
-    st.dataframe(df_f[cols_exists].rename(columns=colunas_exibicao).head(50), use_container_width=True, hide_index=True)
+    cols_exists = [c for c in colunas_exibicao.keys() if c in df_preview.columns]
+    
+    st.dataframe(df_preview[cols_exists].rename(columns=colunas_exibicao), use_container_width=True, hide_index=True)
