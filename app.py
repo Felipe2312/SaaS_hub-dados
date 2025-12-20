@@ -281,50 +281,55 @@ else:
                 pode_prosseguir = (email_input == email_confirm) and ("@" in email_input)
 
                 if st.button("💳 IR PARA PAGAMENTO SEGURO", type="primary", use_container_width=True, disabled=not pode_prosseguir):
-                    # Lógica de Checkout (igual anterior)
+                    # 1. Gerar Excel na memória
                     output_file = io.BytesIO()
                     df_f.to_excel(output_file, index=False)
                     nome_arquivo = f"{st.session_state.ref_venda}.xlsx"
+                    
+                    # 2. Upload para o Supabase Storage
+                    # Nota: Certifique-se que o bucket 'leads_pedidos' existe e é público/acessível
                     supabase.storage.from_('leads_pedidos').upload(
                         path=nome_arquivo, 
                         file=output_file.getvalue(), 
                         file_options={"x-upsert": "true", "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
                     )
+                    
+                    # Pega o link público do arquivo recém-criado
                     url_publica = supabase.storage.from_('leads_pedidos').get_public_url(nome_arquivo)
 
-                    filtros_cliente = {
-                        "setor": f_macro,
-                        "nicho": f_google,
-                        "cidade": f_cidade,
-                        "bairro": f_bairro
-                    }
+                    # 3. Salva a venda no Banco (SEM OS FILTROS JSON)
+                    # Isso vai funcionar direto, pois são as colunas padrão que você já tem
                     supabase.table("vendas").upsert({
                         "external_reference": st.session_state.ref_venda,
                         "valor": valor_total,
                         "status": "pendente",
                         "email_cliente": email_input,
                         "url_arquivo": url_publica,
-                        "enviado": False,
-                        "filtros_json": filtros_cliente
+                        "enviado": False
                     }).execute()
+
+                    # 4. Cria a preferência no Mercado Pago
                     pref_data = {
                         "items": [{"title": f"Pacote {total_leads} Leads - {NOME_MARCA}", "quantity": 1, "unit_price": float(valor_total), "currency_id": "BRL"}],
                         "external_reference": st.session_state.ref_venda,
-                        "back_urls": {"success": "https://leads-brasil.streamlit.app/"},
+                        "back_urls": {"success": "https://leads-brasil.streamlit.app/"}, # Ajuste sua URL se necessário
                         "auto_return": "approved",
                         "notification_url": "https://wsqebbwjmiwiscbkmawy.supabase.co/functions/v1/webhook-pagamento" 
                     }
                     res = SDK.preference().create(pref_data)
+                    
                     if res["status"] in [200, 201]:
                         link_mp = res["response"]["init_point"]
                         st.session_state.link_ativo = link_mp
                         st.components.v1.html(f"<script>window.open('{link_mp}', '_blank');</script>", height=0)
                     else:
-                        st.error("Erro ao gerar link.")
+                        st.error("Erro ao gerar link de pagamento.")
 
+                # Monitoramento do Pagamento (Polling)
                 if 'link_ativo' in st.session_state:
                     st.info("🕒 Checkout aberto em nova guia. Caso não tenha aberto, clique abaixo:")
                     st.markdown(f'<div style="text-align:center;"><a href="{st.session_state.link_ativo}" target="_blank"><button style="padding:12px; background-color:#2e66f1; color:white; border:none; border-radius:5px; cursor:pointer; font-weight:bold;">ABRIR PAGAMENTO MANUALMENTE</button></a></div>', unsafe_allow_html=True)
+                    
                     with st.status("Aguardando confirmação do pagamento...") as status:
                         for _ in range(60):
                             time.sleep(3)
