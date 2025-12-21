@@ -180,7 +180,7 @@ with st.container(border=True):
     with c2: nota_range = st.select_slider("Nota Mínima", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
     with c3: avaliacoes_range = st.slider("Qtd. Avaliações", 0, 1000, (0, 1000), help="Filtre pela quantidade de reviews")
     with c4: filtro_site = st.radio("Site?", ["Todos", "Sim", "Não"], horizontal=True)
-    with c5: filtro_tel = st.radio("Telefone", ["Todos", "Só Celular", "Só Fixo"], horizontal=True)
+    with c5: filtro_tel = st.radio("Telefone", ["Todos", "Só Celular", "Só Fixo"], horizontal=True, index=1)
 
     t1, t2 = st.tabs(["🎯 Segmentação", "📍 Localização"])
 
