@@ -517,4 +517,4 @@ with col_f2:
         
         **Garantia:** Oferecemos os dados "como estão" nas fontes públicas. A taxa de assertividade média é de 80-90%.
         """)
-    st.caption(f"© 2025 {NOME_MARCA} - Todos os direitos reservados.")
+    st.caption(f"© 2025 {NOME_MARCA} - Todos os direitos reservados.\nCNPJ: 61.957.100/0001-03")
