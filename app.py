@@ -12,6 +12,51 @@ from datetime import datetime
 # ==========================================
 st.set_page_config(page_title="DiskLeads", layout="wide", page_icon="🚀")
 
+# --- 📞 BOTÃO FLUTUANTE DE SUPORTE (NOVA FUNCIONALIDADE) ---
+def setup_whatsapp_button():
+    whatsapp_number = "5511963048466"  # Seu número de suporte
+    whatsapp_message = "Olá, preciso de ajuda com o DiskLeads."
+    
+    # Injeção de CSS para o botão flutuante
+    st.markdown("""
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css">
+    <style>
+    .float{
+        position:fixed;
+        width:60px;
+        height:60px;
+        bottom:40px;
+        right:40px;
+        background-color:#25d366;
+        color:#FFF;
+        border-radius:50px;
+        text-align:center;
+        font-size:30px;
+        box-shadow: 2px 2px 3px #999;
+        z-index:100;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        text-decoration:none;
+        transition: all 0.3s ease;
+    }
+    .float:hover{
+        background-color:#128C7E;
+        color:#FFF;
+        transform: scale(1.1);
+    }
+    .my-float{
+        margin-top:0px;
+    }
+    </style>
+    <a href="https://wa.me/%s?text=%s" class="float" target="_blank">
+    <i class="fa fa-whatsapp my-float"></i>
+    </a>
+    """ % (whatsapp_number, whatsapp_message.replace(" ", "%20")), unsafe_allow_html=True)
+
+# Ativa o botão
+setup_whatsapp_button()
+
 try:
     SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets["supabase"]["url"]
     SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets["supabase"]["key"]
@@ -153,13 +198,12 @@ with st.expander("ℹ️ **O que eu vou receber e quanto custa?**", expanded=Fal
         st.markdown("""
         * ✅ **Nome da Empresa** e **Qtd. Avaliações**
         * ✅ **Telefone** (Móvel ou Misto) + **Link WhatsApp**
-        * ✅ **Endereço Completo** 
-        * ✅ **Website** 
+        * ✅ **Endereço Completo** (Rua, Bairro, Cidade, UF)
+        * ✅ **Website** e Link do Google Maps
         * ✅ **Data de Atualização** (Dados Recentes)
         """)
     with c_info2:
         st.markdown("#### 💲 Tabela de Preços")
-        # ATUALIZADO COM OS PREÇOS REAIS DO CÓDIGO
         st.markdown("""
         | Qtd | Preço/Lead |
         | :--- | :--- |
