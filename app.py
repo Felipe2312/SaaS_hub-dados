@@ -8,16 +8,15 @@ import os
 from datetime import datetime
 
 # ==========================================
-# 🔐 CONFIGURAÇÕES
+# 🔐 CONFIGURAÇÕES (Sempre a primeira linha)
 # ==========================================
 st.set_page_config(page_title="DiskLeads", layout="wide", page_icon="🚀")
 
-# --- 📞 BOTÃO FLUTUANTE DE SUPORTE (NOVA FUNCIONALIDADE) ---
+# --- 📞 BOTÃO FLUTUANTE DE SUPORTE ---
 def setup_whatsapp_button():
-    whatsapp_number = "5511963048466"  # Seu número de suporte
+    whatsapp_number = "5511963048466"
     whatsapp_message = "Olá, preciso de ajuda com o DiskLeads."
     
-    # Injeção de CSS para o botão flutuante
     st.markdown("""
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.5.0/css/font-awesome.min.css">
     <style>
@@ -54,7 +53,6 @@ def setup_whatsapp_button():
     </a>
     """ % (whatsapp_number, whatsapp_message.replace(" ", "%20")), unsafe_allow_html=True)
 
-# Ativa o botão
 setup_whatsapp_button()
 
 try:
@@ -90,23 +88,19 @@ def fmt_real(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def classificar_telefone_global(tel):
-    """Classifica e remove lixo (032...)"""
     if not tel: return "Outro"
     nums = "".join(filter(str.isdigit, str(tel)))
-    
     if nums.startswith("55"):
-        if len(nums) > 2 and nums[2] == '0': return "Outro" # Lixo
+        if len(nums) > 2 and nums[2] == '0': return "Outro"
         if len(nums) == 13 and nums[4] == '9': return "Celular"
         elif len(nums) == 12: return "Fixo"
     else:
-        if nums.startswith("0"): return "Outro" # Lixo
+        if nums.startswith("0"): return "Outro"
         if len(nums) == 11 and nums[2] == '9': return "Celular"
         elif len(nums) == 10: return "Fixo"
-            
     return "Outro"
 
 def calcular_preco(qtd):
-    # TABELA DE PREÇOS AJUSTADA (MERCADO)
     tabela = [
         {"limite": 200, "preco": 0.35, "nome": "Iniciante"},
         {"limite": 1000, "preco": 0.20, "nome": "Profissional"}, 
@@ -115,7 +109,6 @@ def calcular_preco(qtd):
     ]
     faixa_atual = None
     prox_faixa_info = None
-
     for i, faixa in enumerate(tabela):
         if qtd <= faixa["limite"]:
             faixa_atual = faixa
@@ -124,11 +117,10 @@ def calcular_preco(qtd):
                 prox_faixa_info = {"meta": faixa["limite"] + 1, "preco": proxima["preco"]}
             break
     if not faixa_atual: faixa_atual = tabela[-1]
-
+    
     preco_unitario = faixa_atual["preco"]
     valor_total = qtd * preco_unitario
-    valor_ancora = qtd * 0.35 # Ancoragem sempre no preço base
-    
+    valor_ancora = qtd * 0.35
     pct_economia_total = 0 if preco_unitario >= 0.35 else int(((valor_ancora - valor_total) / valor_ancora) * 100)
 
     return {
@@ -141,7 +133,8 @@ def calcular_preco(qtd):
         "prox_preco": prox_faixa_info["preco"] if prox_faixa_info else None
     }
 
-@st.cache_data(ttl=600)
+# CACHE DE 24 HORAS (86400 segundos)
+@st.cache_data(ttl=86400)
 def get_all_data():
     all_rows = []
     step = 1000
@@ -155,7 +148,6 @@ def get_all_data():
     
     df = pd.DataFrame(all_rows)
     if not df.empty:
-        # Tratamentos Básicos
         df['nota'] = pd.to_numeric(df['nota'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
         
         if 'avaliacoes' in df.columns:
@@ -177,15 +169,13 @@ def get_all_data():
         else:
             df['data_fmt'] = datetime.today().strftime('%d/%m/%Y')
         
-        # Filtro de Qualidade
         df = df[df['tipo_contato'].isin(['Celular', 'Fixo'])]
         
     return df
 
 # ==========================================
-# 🖥️ APLICAÇÃO
+# 🖥️ UX: RENDERIZA O SITE PRIMEIRO
 # ==========================================
-df_raw = get_all_data()
 
 st.title(f"🚀 {NOME_MARCA}")
 st.markdown("### A plataforma de inteligência de dados locais.")
@@ -215,6 +205,12 @@ with st.expander("ℹ️ **O que eu vou receber e quanto custa?**", expanded=Fal
 
 st.divider()
 
+# ==========================================
+# 📥 CARREGAMENTO DE DADOS (COM TEXTO TRANQUILIZADOR)
+# ==========================================
+with st.spinner("🔄 Conectando ao servidor seguro e baixando dados... Aguarde um instante."):
+    df_raw = get_all_data()
+
 # --- FILTROS ---
 with st.container(border=True):
     st.subheader("🛠️ Configure sua Lista")
@@ -222,7 +218,7 @@ with st.container(border=True):
     
     with c1: busca_nome = st.text_input("Buscar Nome", placeholder="Ex: Silva...")
     with c2: nota_range = st.select_slider("Nota Mínima", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
-    with c3: avaliacoes_range = st.slider("Qtd. Avaliações", 0, 1000, (0, 1000), help="Filtre pela quantidade de reviews")
+    with c3: avaliacoes_range = st.slider("Qtd. Avaliações", 0, 1000, (0, 1000), help="Filtre pela quantidade de reviews. Se o máximo for 1000, trazemos 1000+")
     with c4: filtro_site = st.radio("Site?", ["Todos", "Sim", "Não"], horizontal=True)
     with c5: filtro_tel = st.radio("Telefone", ["Todos", "Só Celular", "Só Fixo"], horizontal=True, index=1)
 
@@ -260,9 +256,13 @@ if busca_nome: df_f = df_f[df_f['nome'].str.contains(busca_nome, case=False, na=
 if filtro_site == "Sim": df_f = df_f[df_f['site'].notnull()]
 elif filtro_site == "Não": df_f = df_f[df_f['site'].isnull()]
 
-# Filtros Numéricos
 df_f = df_f[(df_f['nota'] >= nota_range[0]) & (df_f['nota'] <= nota_range[1])]
-df_f = df_f[(df_f['avaliacoes'] >= avaliacoes_range[0]) & (df_f['avaliacoes'] <= avaliacoes_range[1])]
+
+min_aval, max_aval = avaliacoes_range
+if max_aval == 1000:
+    df_f = df_f[df_f['avaliacoes'] >= min_aval]
+else:
+    df_f = df_f[(df_f['avaliacoes'] >= min_aval) & (df_f['avaliacoes'] <= max_aval)]
 
 if filtro_tel == "Só Celular": df_f = df_f[df_f['tipo_contato'] == 'Celular']
 elif filtro_tel == "Só Fixo": df_f = df_f[df_f['tipo_contato'] == 'Fixo']
@@ -294,13 +294,11 @@ else:
     if total_leads == 0:
         st.warning("⚠️ Nenhum lead encontrado.")
     else:
-        # Preço
         with st.container(border=True):
             c1, c2, c3 = st.columns([1, 1, 1])
             with c1:
                 st.caption("Volume")
                 st.markdown(f"### {total_leads:,}".replace(",", "."))
-                # Mostra badge de nível
                 cor_badge = "#FFD700" if resumo_preco['nivel'] == "Atacado" else "#CD7F32"
                 st.markdown(f"<span style='background-color:{cor_badge}; color:black; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:bold;'>{resumo_preco['nivel'].upper()}</span>", unsafe_allow_html=True)
             with c2:
@@ -316,18 +314,14 @@ else:
                     </div>""", unsafe_allow_html=True)
                 st.markdown(f"<h3 style='color:#2ecc71; margin-top:0px'>{fmt_real(resumo_preco['total'])}</h3>", unsafe_allow_html=True)
 
-            # === GAMIFICATION (PRÓXIMO NÍVEL) ===
             if resumo_preco['prox_qtd']:
                 meta = resumo_preco['prox_qtd']
                 faltam = meta - total_leads
                 prox_preco = resumo_preco['prox_preco']
-                
-                # Barra de Progresso Visual
                 progresso = min(total_leads / meta, 0.95)
                 st.write("")
                 st.progress(progresso)
-                
-                st.info(f"💡 Dica: Adicione mais **{faltam} leads** (ex: expanda os bairros) para pagar **{fmt_real(prox_preco)}/unid**.")
+                st.info(f"💡 Dica: Adicione mais **{faltam} leads** para pagar **{fmt_real(prox_preco)}/unid**.")
 
         # ==========================================
         # 💳 PAGAMENTO & DOWNLOAD
@@ -404,7 +398,6 @@ else:
                 if st.button("💳 IR PARA PAGAMENTO SEGURO", type="primary", use_container_width=True, disabled=not pode_prosseguir):
                     
                     df_final = pd.DataFrame()
-                    
                     df_final['Empresa'] = df_f['nome']
                     df_final['Telefone'] = df_f['telefone']
                     df_final['Tipo de Telefone'] = df_f['tipo_contato']
