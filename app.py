@@ -642,3 +642,27 @@ with col_f2:
         """)
     st.caption(f"© 2025 {NOME_MARCA} - Todos os direitos reservados.")
     st.caption(f"CNPJ: 61.957.100/0001-03")
+
+# ==========================================
+# 🛠️ DEBUGGER DE CATEGORIAS (Felipe)
+# ==========================================
+st.divider()
+with st.expander("👨‍💻 Área Técnica (Diagnóstico de 'Outros')"):
+    st.warning("Esta área serve para refinar o agrupamento. Copie a lista abaixo e mande para o Gemini.")
+    
+    # Pega apenas o que caiu na vala comum
+    df_outros = df_raw[df_raw['Segmento'] == 'Outros Comércios & Serviços']
+    
+    if not df_outros.empty:
+        # Conta a frequência de cada categoria perdida
+        top_missed = df_outros['categoria_google'].value_counts().head(100).reset_index()
+        top_missed.columns = ['Nome da Categoria no Google', 'Quantidade de Leads']
+        
+        c_debug1, c_debug2 = st.columns([2, 1])
+        with c_debug1:
+            st.dataframe(top_missed, height=400, use_container_width=True)
+        with c_debug2:
+            st.metric("Total em 'Outros'", f"{len(df_outros):,}".replace(",", "."))
+            st.write("Copie os nomes da tabela ao lado que fazem sentido agrupar.")
+    else:
+        st.success("Nenhuma categoria 'Outros' encontrada! O filtro está perfeito.")
