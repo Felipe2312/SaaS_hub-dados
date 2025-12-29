@@ -101,16 +101,16 @@ def classificar_telefone_global(tel):
         elif len(nums) == 10: return "Fixo"
     return "Outro"
 
-# --- LÓGICA DE PREÇO GRANULAR (Escadinha) ---
+# --- LÓGICA DE MICRO-TIERS (Degraus Curtos) ---
 def calcular_preco_final(qtd):
-    # Faixas curtas para manter o cliente sempre perseguindo o próximo desconto
+    # Definindo degraus curtos para gamificação constante
     faixas = [
-        {"limite": 500, "preco": 0.25},   # 0 a 500
-        {"limite": 1000, "preco": 0.15},  # 501 a 1000
-        {"limite": 2000, "preco": 0.10},  # 1001 a 2000 (Degrau extra)
-        {"limite": 3000, "preco": 0.08},  # 2001 a 3000 (Degrau extra)
-        {"limite": 5000, "preco": 0.06},  # 3001 a 5000
-        {"limite": float('inf'), "preco": 0.04} # 5000+
+        {"limite": 200, "preco": 0.35},   # Até 200 leads (Teste)
+        {"limite": 500, "preco": 0.25},   # 201 a 500 (Desconto rápido)
+        {"limite": 1000, "preco": 0.15},  # 501 a 1000 (Meta 1k)
+        {"limite": 2000, "preco": 0.10},  # 1001 a 2000 (Meta 2k)
+        {"limite": 4000, "preco": 0.08},  # 2001 a 4000 (Volume)
+        {"limite": float('inf'), "preco": 0.05} # Acima de 4k (Atacado)
     ]
     
     total = 0
@@ -118,28 +118,28 @@ def calcular_preco_final(qtd):
     prox_meta = None
     prox_preco_meta = None
     
-    # Cálculo Cascata
+    # Cálculo Progressivo (Cascata Segura)
     for i, f in enumerate(faixas):
         if qtd > f["limite"]:
+            # Preenche a faixa inteira
             quantidade_nesta_faixa = f["limite"] - ultimo_limite
             total += quantidade_nesta_faixa * f["preco"]
             ultimo_limite = f["limite"]
         else:
+            # Preenche parcialmente e para
             quantidade_restante = qtd - ultimo_limite
             if quantidade_restante > 0:
                 total += quantidade_restante * f["preco"]
             
-            # Define o alvo da próxima faixa
+            # Define o alvo do próximo degrau (Dica de UX)
             if i + 1 < len(faixas):
                 prox_meta = f["limite"]
                 prox_preco_meta = faixas[i+1]["preco"]
             break
             
-    # Preço Médio (Total / Qtd)
-    preco_medio = total / qtd if qtd > 0 else 0.25
-    
-    # Preço Âncora (Baseado no valor mais alto de R$ 0.25)
-    valor_ancora = qtd * 0.25 
+    # Preço Médio e Âncora
+    preco_medio = total / qtd if qtd > 0 else 0.35
+    valor_ancora = qtd * 0.35 
     pct_off = int(((valor_ancora - total) / valor_ancora) * 100) if valor_ancora > 0 else 0
 
     return {
@@ -199,7 +199,7 @@ st.title(f"🚀 {NOME_MARCA}")
 st.markdown("### A plataforma de inteligência de dados locais.")
 st.caption("Enriqueça seu CRM com dados públicos, atualizados e validados do Google Maps.")
 
-# --- TABELA DE PREÇOS ATUALIZADA (Mostra os degraus curtos) ---
+# --- TABELA DE PREÇOS (Visual com Micro-Tiers) ---
 with st.expander("ℹ️ **Entenda o nosso Modelo de Economia**", expanded=False):
     c_info1, c_info2 = st.columns([1.2, 1])
     with c_info1:
@@ -212,16 +212,16 @@ with st.expander("ℹ️ **Entenda o nosso Modelo de Economia**", expanded=False
         * ✅ **Data de Atualização** (Dados Recentes)
         """)
     with c_info2:
-        st.markdown("#### 📉 Tabela Progressiva")
+        st.markdown("#### 📉 Descontos Rápidos")
         st.info("Quanto mais você compra, maior o desconto nos leads adicionais.")
         st.markdown("""
         | Faixa (Novos Leads) | Preço Marginal |
         | :--- | :--- |
-        | Primeiros 500 | **R$ 0,25** |
-        | Próximos 500 | **R$ 0,15** |
-        | Próximos 1.000 | **R$ 0,10** |
-        | Próximos 1.000 | **R$ 0,08** |
-        | Acima de 5.000 | **R$ 0,04** |
+        | Primeiros 200 | **R$ 0,35** |
+        | 201 a 500 | **R$ 0,25** |
+        | 501 a 1.000 | **R$ 0,15** |
+        | 1.001 a 2.000 | **R$ 0,10** |
+        | + 4.000 | **R$ 0,05** |
         """)
 
 st.divider()
@@ -307,7 +307,6 @@ if not filtros_ativos:
 
 else:
     total_leads = len(df_f)
-    # 🔴 NOVA LÓGICA DE PREÇO (Escadinha)
     resumo_preco = calcular_preco_final(total_leads)
     valor_total = round(resumo_preco['total'], 2)
 
@@ -335,14 +334,14 @@ else:
                     </div>""", unsafe_allow_html=True)
                 st.markdown(f"<h3 style='color:#2ecc71; margin-top:0px'>{fmt_real(resumo_preco['total'])}</h3>", unsafe_allow_html=True)
 
-            # --- DICA DE UPGRADE VISUAL ---
+            # --- DICA DE UPGRADE INTELIGENTE ---
             if resumo_preco['prox_qtd']:
                 meta = resumo_preco['prox_qtd']
                 faltam = meta - total_leads
                 preco_futuro = resumo_preco['prox_preco_marginal']
                 
                 # Barra de progresso para a meta
-                faixas_limites = [0, 500, 1000, 2000, 3000, 5000]
+                faixas_limites = [0, 200, 500, 1000, 2000, 4000]
                 limite_anterior = 0
                 for L in faixas_limites:
                     if total_leads >= L: limite_anterior = L
@@ -357,10 +356,10 @@ else:
                 st.progress(progresso)
                 
                 st.info(f"""
-                💡 **Falta pouco:** Adicione mais **{faltam} leads** para acessar a faixa de **{fmt_real(preco_futuro)}** por lead!
+                💡 **Dica:** Adicione mais **{faltam} leads** para entrar na faixa de **{fmt_real(preco_futuro)}** por lead!
                 """)
             else:
-                 st.success(f"💎 **Nível Atacado:** Você está pagando o menor preço possível ({fmt_real(0.04)}/lead nos adicionais)!")
+                 st.success(f"💎 **Nível Atacado:** Você está pagando o menor preço possível ({fmt_real(0.05)}/lead nos adicionais)!")
 
         # ==========================================
         # 💳 PAGAMENTO & DOWNLOAD
