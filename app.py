@@ -9,7 +9,7 @@ from datetime import datetime
 import math
 
 # ==========================================
-# 🔐 CONFIGURAÇÕES (Sempre a primeira linha)
+# 🔐 CONFIGURAÇÕES
 # ==========================================
 st.set_page_config(page_title="DiskLeads", layout="wide", page_icon="🚀")
 
@@ -101,16 +101,18 @@ def classificar_telefone_global(tel):
         elif len(nums) == 10: return "Fixo"
     return "Outro"
 
-# --- LÓGICA DE MICRO-TIERS (Degraus Curtos) ---
+# --- LÓGICA DE PREÇO MARGINAL (CASCATA DE 7 DEGRAUS) ---
 def calcular_preco_final(qtd):
-    # Definindo degraus curtos para gamificação constante
+    # Faixas curtas para manter o cliente sempre perseguindo o próximo desconto
+    # IMPORTANTE: O preço aplica-se APENAS aos leads DENTRO daquela faixa
     faixas = [
-        {"limite": 200, "preco": 0.35},   # Até 200 leads (Teste)
-        {"limite": 500, "preco": 0.25},   # 201 a 500 (Desconto rápido)
-        {"limite": 1000, "preco": 0.15},  # 501 a 1000 (Meta 1k)
-        {"limite": 2000, "preco": 0.10},  # 1001 a 2000 (Meta 2k)
-        {"limite": 4000, "preco": 0.08},  # 2001 a 4000 (Volume)
-        {"limite": float('inf'), "preco": 0.05} # Acima de 4k (Atacado)
+        {"limite": 200, "preco": 0.35},   # 0 a 200
+        {"limite": 500, "preco": 0.25},   # 201 a 500
+        {"limite": 1000, "preco": 0.15},  # 501 a 1000
+        {"limite": 2000, "preco": 0.10},  # 1001 a 2000
+        {"limite": 3000, "preco": 0.08},  # 2001 a 3000
+        {"limite": 5000, "preco": 0.06},  # 3001 a 5000
+        {"limite": float('inf'), "preco": 0.04} # 5001+
     ]
     
     total = 0
@@ -118,26 +120,26 @@ def calcular_preco_final(qtd):
     prox_meta = None
     prox_preco_meta = None
     
-    # Cálculo Progressivo (Cascata Segura)
+    # Cálculo Cascata (Garante que o Total sempre sobe)
     for i, f in enumerate(faixas):
         if qtd > f["limite"]:
-            # Preenche a faixa inteira
+            # O cliente comprou toda essa faixa. Soma o valor cheio dela.
             quantidade_nesta_faixa = f["limite"] - ultimo_limite
             total += quantidade_nesta_faixa * f["preco"]
             ultimo_limite = f["limite"]
         else:
-            # Preenche parcialmente e para
+            # O cliente parou no meio dessa faixa. Soma apenas o parcial.
             quantidade_restante = qtd - ultimo_limite
             if quantidade_restante > 0:
                 total += quantidade_restante * f["preco"]
             
-            # Define o alvo do próximo degrau (Dica de UX)
+            # Define o alvo do próximo degrau para a Dica
             if i + 1 < len(faixas):
                 prox_meta = f["limite"]
                 prox_preco_meta = faixas[i+1]["preco"]
             break
             
-    # Preço Médio e Âncora
+    # Preço Médio (Apenas informativo) e Âncora
     preco_medio = total / qtd if qtd > 0 else 0.35
     valor_ancora = qtd * 0.35 
     pct_off = int(((valor_ancora - total) / valor_ancora) * 100) if valor_ancora > 0 else 0
@@ -199,8 +201,8 @@ st.title(f"🚀 {NOME_MARCA}")
 st.markdown("### A plataforma de inteligência de dados locais.")
 st.caption("Enriqueça seu CRM com dados públicos, atualizados e validados do Google Maps.")
 
-# --- TABELA DE PREÇOS (Visual com Micro-Tiers) ---
-with st.expander("ℹ️ **Entenda o nosso Modelo de Economia**", expanded=False):
+# --- TABELA DE PREÇOS ATUALIZADA (UI reflete exatamente a lógica) ---
+with st.expander("ℹ️ **Como funciona o Desconto Progressivo?**", expanded=False):
     c_info1, c_info2 = st.columns([1.2, 1])
     with c_info1:
         st.markdown("#### 📦 O que vem no arquivo?")
@@ -212,16 +214,18 @@ with st.expander("ℹ️ **Entenda o nosso Modelo de Economia**", expanded=False
         * ✅ **Data de Atualização** (Dados Recentes)
         """)
     with c_info2:
-        st.markdown("#### 📉 Descontos Rápidos")
-        st.info("Quanto mais você compra, maior o desconto nos leads adicionais.")
+        st.markdown("#### 📉 Tabela de Faixas (Marginal)")
+        st.info("O preço reduzido aplica-se APENAS aos leads que excedem a faixa anterior.")
         st.markdown("""
-        | Faixa (Novos Leads) | Preço Marginal |
+        | Leads (Excedente) | Preço Por Unidade |
         | :--- | :--- |
-        | Primeiros 200 | **R$ 0,35** |
+        | 0 a 200 | **R$ 0,35** |
         | 201 a 500 | **R$ 0,25** |
         | 501 a 1.000 | **R$ 0,15** |
         | 1.001 a 2.000 | **R$ 0,10** |
-        | + 4.000 | **R$ 0,05** |
+        | 2.001 a 3.000 | **R$ 0,08** |
+        | 3.001 a 5.000 | **R$ 0,06** |
+        | Acima de 5.000 | **R$ 0,04** |
         """)
 
 st.divider()
@@ -307,6 +311,7 @@ if not filtros_ativos:
 
 else:
     total_leads = len(df_f)
+    # Chama função calibrada
     resumo_preco = calcular_preco_final(total_leads)
     valor_total = round(resumo_preco['total'], 2)
 
@@ -322,6 +327,7 @@ else:
                 st.markdown(f"### {total_leads:,}".replace(",", "."))
                 st.markdown(f"<span style='background-color:#2e66f1; color:white; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:bold;'>PROGRESSIVO</span>", unsafe_allow_html=True)
             with c2:
+                # UX: Deixei claro que é o preço médio
                 st.caption("Preço Médio / Lead")
                 st.markdown(f"### {fmt_real(resumo_preco['unitario_medio'])}")
             with c3:
@@ -334,20 +340,19 @@ else:
                     </div>""", unsafe_allow_html=True)
                 st.markdown(f"<h3 style='color:#2ecc71; margin-top:0px'>{fmt_real(resumo_preco['total'])}</h3>", unsafe_allow_html=True)
 
-            # --- DICA DE UPGRADE INTELIGENTE ---
+            # --- DICA DE UPGRADE SINCRONIZADA ---
             if resumo_preco['prox_qtd']:
                 meta = resumo_preco['prox_qtd']
                 faltam = meta - total_leads
                 preco_futuro = resumo_preco['prox_preco_marginal']
                 
-                # Barra de progresso para a meta
-                faixas_limites = [0, 200, 500, 1000, 2000, 4000]
+                # Sincronizei as faixas da barra com as faixas de preço
+                faixas_limites = [0, 200, 500, 1000, 2000, 3000, 5000]
                 limite_anterior = 0
                 for L in faixas_limites:
                     if total_leads >= L: limite_anterior = L
                     else: break
                 
-                # Cálculo seguro do progresso
                 denominador = meta - limite_anterior
                 numerador = total_leads - limite_anterior
                 progresso = min(numerador / denominador, 0.95) if denominador > 0 else 0
@@ -356,10 +361,10 @@ else:
                 st.progress(progresso)
                 
                 st.info(f"""
-                💡 **Dica:** Adicione mais **{faltam} leads** para entrar na faixa de **{fmt_real(preco_futuro)}** por lead!
+                💡 **Falta pouco:** Adicione mais **{faltam} leads** para que os próximos custem apenas **{fmt_real(preco_futuro)}** cada!
                 """)
             else:
-                 st.success(f"💎 **Nível Atacado:** Você está pagando o menor preço possível ({fmt_real(0.05)}/lead nos adicionais)!")
+                 st.success(f"💎 **Nível Atacado:** Você desbloqueou o menor preço do mercado ({fmt_real(0.04)}/lead nos adicionais)!")
 
         # ==========================================
         # 💳 PAGAMENTO & DOWNLOAD
