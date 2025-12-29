@@ -7,7 +7,7 @@ import time
 import os
 from datetime import datetime
 import math
-import re  # Importante para a otimização
+import re
 
 # ==========================================
 # 🔐 CONFIGURAÇÕES
@@ -71,15 +71,9 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 SDK = mercadopago.SDK(MP_ACCESS_TOKEN)
 
 # ==========================================
-# 🧠 INTELIGÊNCIA DE CATEGORIZAÇÃO (OTIMIZADA)
+# 🧠 INTELIGÊNCIA DE CATEGORIZAÇÃO (V11 - Regex Compilado)
 # ==========================================
 
-# Dicionário de Keywords para Regex Compilado
-# ==========================================
-# 🧠 INTELIGÊNCIA DE CATEGORIZAÇÃO (V11 - A Perfeição)
-# ==========================================
-
-# Dicionário de Keywords para Regex Compilado
 CATEGORIAS_KEYWORDS = {
     "Saúde & Veterinária": [
         'médic', 'clinic', 'clínica', 'hospital', 'saúde', 'dentista', 'odonto', 'ortodon',
@@ -224,9 +218,6 @@ CATEGORIAS_KEYWORDS = {
 # --- COMPILAÇÃO DOS PATTERNS (Executado apenas 1 vez no deploy) ---
 REGEX_PATTERNS = {}
 for categoria, keywords in CATEGORIAS_KEYWORDS.items():
-    # Cria um regex do tipo: (palavra1|palavra2|palavra3)
-    # re.IGNORECASE faz ele ignorar maiúsculas/minúsculas automaticamente
-    # re.escape garante que caracteres especiais não quebrem o regex
     pattern_str = '|'.join(map(re.escape, keywords))
     REGEX_PATTERNS[categoria] = re.compile(pattern_str, re.IGNORECASE)
 
@@ -264,15 +255,16 @@ def classificar_telefone_global(tel):
         elif len(nums) == 10: return "Fixo"
     return "Outro"
 
-# --- LÓGICA DE PREÇO (Micro-Tiers / Cascata) ---
+# --- LÓGICA DE PREÇO CORRIGIDA E CALIBRADA (Meta: 5k = R$ 520) ---
 def calcular_preco_final(qtd):
     faixas = [
         {"limite": 200, "preco": 0.35},
         {"limite": 500, "preco": 0.25},
         {"limite": 1000, "preco": 0.15},
         {"limite": 2000, "preco": 0.10},
-        {"limite": 4000, "preco": 0.06},  # Volume Alto
-        {"limite": float('inf'), "preco": 0.04} # Atacado Real (Acima de 4k)
+        {"limite": 3000, "preco": 0.08},  # Degrau Restaurado
+        {"limite": 5000, "preco": 0.06},  # Ajuste Fino
+        {"limite": float('inf'), "preco": 0.04} # Atacado
     ]
     
     total = 0
@@ -335,10 +327,10 @@ def get_all_data():
         if 'categoria_google' not in df.columns: df['categoria_google'] = 'Outros'
         df['categoria_google'] = df['categoria_google'].fillna('Não identificada')
         
-        # APLICA A CATEGORIZAÇÃO OTIMIZADA (REGEX)
+        # APLICA A CATEGORIZAÇÃO OTIMIZADA
         df['Segmento'] = df['categoria_google'].apply(normalizar_categoria)
         
-        # 1. CLASSIFICA
+        # CLASSIFICA TELEFONE
         df['tipo_contato'] = df['telefone'].apply(classificar_telefone_global)
         
         if 'data_extracao' in df.columns:
@@ -347,8 +339,7 @@ def get_all_data():
         else:
             df['data_fmt'] = datetime.today().strftime('%d/%m/%Y')
         
-        # 2. LIMPA (FILTRA) AGORA MESMO
-        # Tudo que não for Celular ou Fixo morre aqui e não entra no app.
+        # FILTRO DE QUALIDADE (Apenas Celular ou Fixo entram)
         df = df[df['tipo_contato'].isin(['Celular', 'Fixo'])]
         
     return df
@@ -361,7 +352,7 @@ st.title(f"🚀 {NOME_MARCA}")
 st.markdown("### A plataforma de inteligência de dados locais.")
 st.caption("Enriqueça seu CRM com dados públicos, atualizados e validados do Google Maps.")
 
-# --- TABELA DE PREÇOS (Atualizada para mostrar o tier de 0.04) ---
+# --- TABELA DE PREÇOS ATUALIZADA ---
 with st.expander("ℹ️ **Entenda o nosso Modelo de Economia**", expanded=False):
     c_info1, c_info2 = st.columns([1.2, 1])
     with c_info1:
@@ -383,8 +374,9 @@ with st.expander("ℹ️ **Entenda o nosso Modelo de Economia**", expanded=False
         | 201 a 500 | **R$ 0,25** |
         | 501 a 1.000 | **R$ 0,15** |
         | 1.001 a 2.000 | **R$ 0,10** |
-        | 2.001 a 4.000 | **R$ 0,06** |
-        | + 4.000 | **R$ 0,04** |
+        | 2.001 a 3.000 | **R$ 0,08** |
+        | 3.001 a 5.000 | **R$ 0,06** |
+        | + 5.000 | **R$ 0,04** |
         """)
 
 st.divider()
@@ -393,7 +385,6 @@ st.divider()
 # 📥 CARREGAMENTO DE DADOS (JÁ LIMPOS)
 # ==========================================
 with st.spinner("🔄 Conectando ao servidor seguro e baixando dados... Aguarde um instante."):
-    # df_raw já vem sem lixo (telefones inválidos já foram removidos)
     df_raw = get_all_data()
 
 # --- FILTROS ---
@@ -507,8 +498,8 @@ else:
                 faltam = meta - total_leads
                 preco_futuro = resumo_preco['prox_preco_marginal']
                 
-                # Barra ajustada para o novo tier de 4000
-                faixas_limites = [0, 200, 500, 1000, 2000, 4000]
+                # Faixas de progresso (visual)
+                faixas_limites = [0, 200, 500, 1000, 2000, 3000, 5000]
                 limite_anterior = 0
                 for L in faixas_limites:
                     if total_leads >= L: limite_anterior = L
@@ -723,3 +714,4 @@ with col_f2:
         """)
     st.caption(f"© 2025 {NOME_MARCA} - Todos os direitos reservados.")
     st.caption(f"CNPJ: 61.957.100/0001-03")
+    
