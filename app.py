@@ -76,96 +76,151 @@ SDK = mercadopago.SDK(MP_ACCESS_TOKEN)
 # ==========================================
 # 🧠 FUNÇÃO DE AGRUPAMENTO (NORMALIZAÇÃO) AVANÇADA
 # ==========================================
+# ==========================================
+# 🧠 FUNÇÃO DE AGRUPAMENTO V3.0 (Data-Driven)
+# ==========================================
 def normalizar_categoria(cat_google):
-    if not cat_google: return "Outros"
+    if not cat_google or str(cat_google).strip() == "" or str(cat_google).lower() == "não identificada":
+        return "Não Identificada / Outros"
     
-    # Normaliza para minúsculo para facilitar a busca
-    cat = str(cat_google).lower()
+    # 1. Limpeza Prévia (Crucial para pegar 'Lava-rápido' e 'Ar-condicionado')
+    cat = str(cat_google).lower().replace('-', ' ').replace('/', ' ')
 
-    # 1. SAÚDE, CLÍNICAS E BEM-ESTAR
+    # -----------------------------------------------------------
+    # GRUPO 1: SAÚDE, VETERINÁRIA & BEM-ESTAR
+    # -----------------------------------------------------------
     if any(x in cat for x in [
-        'médic', 'clinic', 'clínica', 'hospital', 'saúde', 'dentista', 'odonto', 
-        'terapia', 'psicól', 'fisiotera', 'nutri', 'laboratório', 'farmá', 'drogaria',
+        'médic', 'clinic', 'clínica', 'hospital', 'saúde', 'dentista', 'odonto', 'ortodon',
+        'terapia', 'psicól', 'psiquiatra', 'fisiotera', 'nutri', 'laboratório', 'farmá', 'drogaria',
         'ótica', 'ortoped', 'pediatra', 'dermatolog', 'cardiolog', 'oftalmo', 'quiroprax',
-        'veterinári', 'pet', 'animal', 'banho e tosa'
+        'veterinári', 'pet', 'animal', 'banho e tosa', 'acupunt', 'urologista', 'ginecolog',
+        'obstetra', 'cirurgi', 'enfermeir', 'diagnóst', 'vacina', 'raio x'
     ]): return "Saúde & Veterinária"
 
-    # 2. BELEZA E ESTÉTICA
+    # -----------------------------------------------------------
+    # GRUPO 2: BELEZA & ESTÉTICA
+    # -----------------------------------------------------------
     if any(x in cat for x in [
         'beleza', 'estétic', 'salão', 'cabeleireiro', 'barbearia', 'manicure', 
         'pedicure', 'unha', 'sobrancelha', 'cílios', 'depila', 'massagem', 'spa',
-        'cosmétic', 'perfumaria', 'maquiagem', 'tatuagem', 'piercing'
+        'cosmétic', 'perfumaria', 'maquiagem', 'tatuagem', 'piercing', 'capilar', 'sex shop'
     ]): return "Beleza & Estética"
 
-    # 3. FITNESS E ESPORTES
+    # -----------------------------------------------------------
+    # GRUPO 3: FITNESS & ESPORTES
+    # -----------------------------------------------------------
     if any(x in cat for x in [
         'academia', 'fit', 'gym', 'crossfit', 'pilates', 'yoga', 'artes marciais',
-        'esporte', 'natação', 'personal', 'treinamento', 'suplemento'
+        'esporte', 'natação', 'personal', 'treinamento', 'suplemento', 'clube',
+        'futebol', 'quadra', 'bicicleta', 'ciclis'
     ]): return "Fitness & Esportes"
 
-    # 4. ALIMENTAÇÃO E BEBIDAS (FOOD SERVICE)
+    # -----------------------------------------------------------
+    # GRUPO 4: ALIMENTAÇÃO & BEBIDAS
+    # -----------------------------------------------------------
     if any(x in cat for x in [
-        'restaurante', 'bar', 'lanchonete', 'pizzaria', 'hamburgueria', 'sushi',
+        'restaurante', 'bar', 'lanchonete', 'pizzaria', 'hamburgueria', 'sushi', 'pizza',
         'japonês', 'churrascaria', 'padaria', 'confeitaria', 'café', 'cafeteria',
         'bistrô', 'buffet', 'açaí', 'sorvete', 'doceria', 'bolo', 'mercado', 
-        'supermercado', 'mercearia', 'hortifruti', 'adega', 'bebida', 'food'
+        'supermercado', 'mercearia', 'hortifruti', 'adega', 'bebida', 'food',
+        'vinícola', 'verdureiro', 'frutaria', 'açougue', 'acougue', 'peixaria', 
+        'água', 'agua', 'natural', 'naturais', 'empório', 'gourmet', 'cerveja', 'sacolão',
+        'catering', 'aliment'
     ]): return "Alimentação & Bebidas"
 
-    # 5. CONSTRUÇÃO, CASA E DECORAÇÃO
+    # -----------------------------------------------------------
+    # GRUPO 5: CONSTRUÇÃO, CASA & MANUTENÇÃO
+    # -----------------------------------------------------------
     if any(x in cat for x in [
-        'constru', 'obra', 'engenhar', 'arquitet', 'reform', 'pintor', 'elétric',
-        'encanador', 'marceneiro', 'vidraçaria', 'serralheria', 'marmoraria',
-        'móve', 'decoração', 'design de interior', 'piscina', 'ar condicionado',
-        'refrigeração', 'material de construção', 'ferragens', 'tinta', 'piso'
-    ]): return "Construção & Casa"
+        'constru', 'obra', 'engenhar', 'arquitet', 'reform', 'pintor', 'pintura', 'elétric', 'eletricista',
+        'encanador', 'marceneiro', 'marcenaria', 'vidraçaria', 'vidraceiro', 'serralheria', 'marmoraria',
+        'móve', 'moveis', 'decoração', 'design de interior', 'piscina', 'ar condicionado', 'climatização',
+        'refrigeração', 'material', 'ferragens', 'tinta', 'piso', 'madeira', 'madeireira',
+        'gás', 'jardin', 'paisagismo', 'chaveiro', 'mudança', 'dedetizadora', 'poço',
+        'colch', 'sofá', 'sofa', 'ferramenta', 'hidráulic', 'terraplenagem', 'tapeçaria', 
+        'telhado', 'calha', 'gesso', 'cimento', 'esquadria', 'bombeiro', 'conserto', 'reparo', 
+        'manutenção', 'instalação', 'faxina', 'limpeza', 'solar', 'energia'
+    ]): return "Construção, Casa & Manutenção"
 
-    # 6. AUTOMOTIVO E TRANSPORTES
+    # -----------------------------------------------------------
+    # GRUPO 6: AUTOMOTIVO & TRANSPORTES
+    # -----------------------------------------------------------
     if any(x in cat for x in [
-        'auto', 'carro', 'veículo', 'moto', 'mecânic', 'oficina', 'pneu', 
+        'auto', 'carro', 'veículo', 'moto', 'mecânic', 'oficina', 'pneu', 'borracharia',
         'funilaria', 'pintura automotiva', 'posto', 'combustível', 'estacionamento',
-        'concessionária', 'aluguel de carro', 'transporte', 'frete', 'mudança',
-        'guincho', 'lava rápido', 'estética automotiva'
+        'concessionária', 'aluguel', 'transporte', 'frete', 'guincho', 'martelinho',
+        'lava', 'lavagem', 'estética automotiva', 'aeroporto', 'ônibus', 'táxi', 'logística',
+        'óleo', 'lubrificante', 'escapamento', 'bateria', 'rodas', 'balanceamento'
     ]): return "Automotivo & Transportes"
 
-    # 7. SERVIÇOS EMPRESARIAIS E ESCRITÓRIOS (B2B)
+    # -----------------------------------------------------------
+    # GRUPO 7: MODA & VESTUÁRIO
+    # -----------------------------------------------------------
     if any(x in cat for x in [
-        'advoga', 'jurídic', 'lei', 'contabil', 'contad', 'consultoria', 'agência',
-        'marketing', 'publicidade', 'design', 'gráfica', 'impressão', 'seguro',
+        'roupa', 'moda', 'vestuário', 'calcado', 'calçado', 'sapato', 'tênis',
+        'acessório', 'joia', 'bijuteria', 'bolsa', 'infantil', 'bebe', 'noiva',
+        'costur', 'alfaiate', 'uniforme', 'lingerie', 'mala', 'tecido', 'relojoaria', 'brechó'
+    ]): return "Moda & Vestuário"
+
+    # -----------------------------------------------------------
+    # GRUPO 8: COMÉRCIO VAREJISTA (Novo!)
+    # -----------------------------------------------------------
+    if any(x in cat for x in [
+        'papelaria', 'floricultura', 'presente', 'brinquedo', 'tabacaria', 'conveniência',
+        'variedades', 'departamento', 'shopping', 'eletrodoméstico', 'colchão', 'colchões',
+        'artigos', 'utilidades', 'loja', 'varejista', 'comércio', 'copiadora', 'livraria', 'banca'
+    ]): return "Comércio & Varejo"
+
+    # -----------------------------------------------------------
+    # GRUPO 9: SERVIÇOS EMPRESARIAIS (B2B)
+    # -----------------------------------------------------------
+    if any(x in cat for x in [
+        'advoga', 'jurídic', 'lei', 'contabil', 'contad', 'consultor', 'agência', 'assessoria',
+        'marketing', 'publicidade', 'design', 'gráfica', 'impressão', 'seguro', 'rh',
         'imobili', 'corretor', 'coworking', 'escritório', 'financeir', 'banco',
-        'empréstimo', 'consórcio', 'terceiriza', 'limpeza', 'segurança'
+        'empréstimo', 'consórcio', 'terceiriza', 'segurança', 'recrutamento', 'portaria',
+        'cartório', 'despachante', 'agente', 'associa', 'remessa', 'administrat', 'escrituração'
     ]): return "Serviços B2B & Escritórios"
 
-    # 8. EDUCAÇÃO E ENSINO
+    # -----------------------------------------------------------
+    # GRUPO 10: EDUCAÇÃO & ENSINO
+    # -----------------------------------------------------------
     if any(x in cat for x in [
         'escola', 'colégio', 'faculdade', 'universidade', 'curso', 'idiomas',
         'inglês', 'ensino', 'educação', 'treinamento', 'creche', 'berçário',
-        'autoescola', 'música', 'dança'
+        'autoescola', 'música', 'dança', 'biblioteca', 'jardim de infância', 'educacional'
     ]): return "Educação & Ensino"
 
-    # 9. TECNOLOGIA E INFORMÁTICA
+    # -----------------------------------------------------------
+    # GRUPO 11: TECNOLOGIA E INFORMÁTICA
+    # -----------------------------------------------------------
     if any(x in cat for x in [
-        'informática', 'computador', 'celular', 'smartphone', 'assistência técnica',
-        'software', 'ti ', 'tecnologia', 'internet', 'telecom', 'eletrônic', 'game'
+        'informática', 'computador', 'celular', 'smartphone', 'assistência técnica', 'telefonia',
+        'software', 'ti ', 'tecnologia', 'internet', 'telecom', 'eletrônic', 'game',
+        'lan house', 'cyber'
     ]): return "Tecnologia & Informática"
 
-    # 10. MODA E VESTUÁRIO
-    if any(x in cat for x in [
-        'loja de roupa', 'moda', 'vestuário', 'calcado', 'sapato', 'tênis',
-        'acessório', 'joia', 'bijuteria', 'bolsa', 'infantil', 'bebe', 'noiva'
-    ]): return "Moda & Vestuário"
-
-    # 11. TURISMO, HOTELARIA E EVENTOS
+    # -----------------------------------------------------------
+    # GRUPO 12: TURISMO & LAZER
+    # -----------------------------------------------------------
     if any(x in cat for x in [
         'hotel', 'pousada', 'hostel', 'viagem', 'turismo', 'evento', 'festa',
-        'casamento', 'formatura', 'produtora', 'show', 'teatro', 'cinema'
-    ]): return "Turismo & Eventos"
+        'casamento', 'formatura', 'produtora', 'show', 'teatro', 'cinema',
+        'museu', 'parque', 'camping', 'acampamento', 'recreação', 'motel'
+    ]): return "Turismo & Lazer"
 
-    # 12. INDÚSTRIA E AGRONEGÓCIO
+    # -----------------------------------------------------------
+    # GRUPO 13: INDÚSTRIA & AGRONEGÓCIO
+    # -----------------------------------------------------------
+    # Mata os "Fabricante", "Atacadista", "Distribuidor", "Usina"
     if any(x in cat for x in [
-        'indústria', 'fábrica', 'confecção', 'metalúrgica', 'distribuidora',
-        'atacado', 'agro', 'fazenda', 'sítio', 'rural', 'máquina', 'equipamento'
-    ]): return "Indústria & Atacado"
+        'indústria', 'industrial', 'fábrica', 'confecção', 'metalúrgica', 'siderúrgica', 
+        'distribui', 'atacado', 'atacadista', 'fornecedor', 'agro', 'fazenda', 'sítio', 
+        'rural', 'máquina', 'equipamento', 'usina', 'viveiro', 'planta', 'abatedouro', 
+        'produção', 'embalagem', 'plástico', 'aço', 'ferro', 'alumínio', 'armazém', 'depósito'
+    ]): return "Indústria & Agronegócio"
 
+    # Se sobrou algo muito genérico que não caiu em nada acima:
     return "Outros Comércios & Serviços"
 
 def fmt_real(valor):
