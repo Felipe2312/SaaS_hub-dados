@@ -101,18 +101,15 @@ def classificar_telefone_global(tel):
         elif len(nums) == 10: return "Fixo"
     return "Outro"
 
-# --- LÓGICA DE PREÇO MARGINAL (CASCATA DE 7 DEGRAUS) ---
+# --- LÓGICA DE PREÇO (Corrigida para R$ 0,04 no final) ---
 def calcular_preco_final(qtd):
-    # Faixas curtas para manter o cliente sempre perseguindo o próximo desconto
-    # IMPORTANTE: O preço aplica-se APENAS aos leads DENTRO daquela faixa
     faixas = [
-        {"limite": 200, "preco": 0.35},   # 0 a 200
-        {"limite": 500, "preco": 0.25},   # 201 a 500
-        {"limite": 1000, "preco": 0.15},  # 501 a 1000
-        {"limite": 2000, "preco": 0.10},  # 1001 a 2000
-        {"limite": 3000, "preco": 0.08},  # 2001 a 3000
-        {"limite": 5000, "preco": 0.06},  # 3001 a 5000
-        {"limite": float('inf'), "preco": 0.04} # 5001+
+        {"limite": 200, "preco": 0.35},
+        {"limite": 500, "preco": 0.25},
+        {"limite": 1000, "preco": 0.15},
+        {"limite": 2000, "preco": 0.10},
+        {"limite": 4000, "preco": 0.06},  # Volume Alto
+        {"limite": float('inf'), "preco": 0.04} # Atacado Real (Acima de 4k)
     ]
     
     total = 0
@@ -120,26 +117,21 @@ def calcular_preco_final(qtd):
     prox_meta = None
     prox_preco_meta = None
     
-    # Cálculo Cascata (Garante que o Total sempre sobe)
     for i, f in enumerate(faixas):
         if qtd > f["limite"]:
-            # O cliente comprou toda essa faixa. Soma o valor cheio dela.
             quantidade_nesta_faixa = f["limite"] - ultimo_limite
             total += quantidade_nesta_faixa * f["preco"]
             ultimo_limite = f["limite"]
         else:
-            # O cliente parou no meio dessa faixa. Soma apenas o parcial.
             quantidade_restante = qtd - ultimo_limite
             if quantidade_restante > 0:
                 total += quantidade_restante * f["preco"]
             
-            # Define o alvo do próximo degrau para a Dica
             if i + 1 < len(faixas):
                 prox_meta = f["limite"]
                 prox_preco_meta = faixas[i+1]["preco"]
             break
             
-    # Preço Médio (Apenas informativo) e Âncora
     preco_medio = total / qtd if qtd > 0 else 0.35
     valor_ancora = qtd * 0.35 
     pct_off = int(((valor_ancora - total) / valor_ancora) * 100) if valor_ancora > 0 else 0
@@ -181,6 +173,8 @@ def get_all_data():
         df['categoria_google'] = df['categoria_google'].fillna('Não identificada')
         
         df['Segmento'] = df['categoria_google'].apply(normalizar_categoria)
+        
+        # 1. CLASSIFICA
         df['tipo_contato'] = df['telefone'].apply(classificar_telefone_global)
         
         if 'data_extracao' in df.columns:
@@ -189,6 +183,8 @@ def get_all_data():
         else:
             df['data_fmt'] = datetime.today().strftime('%d/%m/%Y')
         
+        # 2. LIMPA (FILTRA) AGORA MESMO
+        # Tudo que não for Celular ou Fixo morre aqui e não entra no app.
         df = df[df['tipo_contato'].isin(['Celular', 'Fixo'])]
         
     return df
@@ -201,8 +197,8 @@ st.title(f"🚀 {NOME_MARCA}")
 st.markdown("### A plataforma de inteligência de dados locais.")
 st.caption("Enriqueça seu CRM com dados públicos, atualizados e validados do Google Maps.")
 
-# --- TABELA DE PREÇOS ATUALIZADA (UI reflete exatamente a lógica) ---
-with st.expander("ℹ️ **Como funciona o Desconto Progressivo?**", expanded=False):
+# --- TABELA DE PREÇOS (Atualizada para mostrar o tier de 0.04) ---
+with st.expander("ℹ️ **Entenda o nosso Modelo de Economia**", expanded=False):
     c_info1, c_info2 = st.columns([1.2, 1])
     with c_info1:
         st.markdown("#### 📦 O que vem no arquivo?")
@@ -214,26 +210,26 @@ with st.expander("ℹ️ **Como funciona o Desconto Progressivo?**", expanded=Fa
         * ✅ **Data de Atualização** (Dados Recentes)
         """)
     with c_info2:
-        st.markdown("#### 📉 Tabela de Faixas (Marginal)")
-        st.info("O preço reduzido aplica-se APENAS aos leads que excedem a faixa anterior.")
+        st.markdown("#### 📉 Descontos Rápidos")
+        st.info("Quanto mais você compra, maior o desconto nos leads excedentes.")
         st.markdown("""
-        | Leads (Excedente) | Preço Por Unidade |
+        | Faixa (Novos Leads) | Preço Marginal |
         | :--- | :--- |
-        | 0 a 200 | **R$ 0,35** |
+        | Primeiros 200 | **R$ 0,35** |
         | 201 a 500 | **R$ 0,25** |
         | 501 a 1.000 | **R$ 0,15** |
         | 1.001 a 2.000 | **R$ 0,10** |
-        | 2.001 a 3.000 | **R$ 0,08** |
-        | 3.001 a 5.000 | **R$ 0,06** |
-        | Acima de 5.000 | **R$ 0,04** |
+        | 2.001 a 4.000 | **R$ 0,06** |
+        | + 4.000 | **R$ 0,04** |
         """)
 
 st.divider()
 
 # ==========================================
-# 📥 CARREGAMENTO DE DADOS
+# 📥 CARREGAMENTO DE DADOS (JÁ LIMPOS)
 # ==========================================
 with st.spinner("🔄 Conectando ao servidor seguro e baixando dados... Aguarde um instante."):
+    # df_raw já vem sem lixo (telefones inválidos já foram removidos)
     df_raw = get_all_data()
 
 # --- FILTROS ---
@@ -245,7 +241,7 @@ with st.container(border=True):
     with c2: nota_range = st.select_slider("Nota Mínima", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
     with c3: avaliacoes_range = st.slider("Qtd. Avaliações", 0, 1000, (0, 1000), help="Filtre pela quantidade de reviews.")
     with c4: filtro_site = st.radio("Site?", ["Todos", "Sim", "Não"], horizontal=True)
-    with c5: filtro_tel = st.radio("Telefone", ["Todos", "Só Celular", "Só Fixo"], horizontal=True, index=1)
+    with c5: filtro_tel = st.radio("Telefone", ["Todos (Móvel/Fixo)", "Apenas Celular", "Apenas Fixo"], horizontal=True, index=0)
 
     t1, t2 = st.tabs(["🎯 Segmentação", "📍 Localização"])
 
@@ -277,6 +273,12 @@ with st.container(border=True):
 
 # --- APPLY FILTROS ---
 df_f = df_raw.copy()
+
+if filtro_tel == "Apenas Celular":
+    df_f = df_f[df_f['tipo_contato'] == 'Celular']
+elif filtro_tel == "Apenas Fixo":
+    df_f = df_f[df_f['tipo_contato'] == 'Fixo']
+
 if busca_nome: df_f = df_f[df_f['nome'].str.contains(busca_nome, case=False, na=False)]
 if filtro_site == "Sim": df_f = df_f[df_f['site'].notnull()]
 elif filtro_site == "Não": df_f = df_f[df_f['site'].isnull()]
@@ -288,9 +290,6 @@ if max_aval == 1000:
     df_f = df_f[df_f['avaliacoes'] >= min_aval]
 else:
     df_f = df_f[(df_f['avaliacoes'] >= min_aval) & (df_f['avaliacoes'] <= max_aval)]
-
-if filtro_tel == "Só Celular": df_f = df_f[df_f['tipo_contato'] == 'Celular']
-elif filtro_tel == "Só Fixo": df_f = df_f[df_f['tipo_contato'] == 'Fixo']
 
 if f_macro: df_f = df_f[df_f['Segmento'].isin(f_macro)]
 if f_google: df_f = df_f[df_f['categoria_google'].isin(f_google)]
@@ -304,21 +303,20 @@ filtros_ativos = any([busca_nome, f_macro, f_google, f_uf, f_cidade, f_bairro, f
 if not filtros_ativos:
     st.info("👆 Selecione um filtro para começar.")
     m1, m2, m3 = st.columns(3)
-    with m1: st.metric("Empresas", f"{len(df_raw):,}".replace(",", "."))
+    with m1: st.metric("Empresas Válidas", f"{len(df_raw):,}".replace(",", "."))
     with m2: st.metric("Cidades", f"{df_raw['cidade'].nunique()}")
     with m3: st.metric("Setores", f"{df_raw['Segmento'].nunique()}")
     st.markdown("---")
 
 else:
     total_leads = len(df_f)
-    # Chama função calibrada
     resumo_preco = calcular_preco_final(total_leads)
     valor_total = round(resumo_preco['total'], 2)
 
     st.divider()
 
     if total_leads == 0:
-        st.warning("⚠️ Nenhum lead encontrado.")
+        st.warning("⚠️ Nenhum lead encontrado com os filtros selecionados.")
     else:
         with st.container(border=True):
             c1, c2, c3 = st.columns([1, 1, 1])
@@ -327,7 +325,6 @@ else:
                 st.markdown(f"### {total_leads:,}".replace(",", "."))
                 st.markdown(f"<span style='background-color:#2e66f1; color:white; padding:2px 8px; border-radius:10px; font-size:12px; font-weight:bold;'>PROGRESSIVO</span>", unsafe_allow_html=True)
             with c2:
-                # UX: Deixei claro que é o preço médio
                 st.caption("Preço Médio / Lead")
                 st.markdown(f"### {fmt_real(resumo_preco['unitario_medio'])}")
             with c3:
@@ -346,8 +343,8 @@ else:
                 faltam = meta - total_leads
                 preco_futuro = resumo_preco['prox_preco_marginal']
                 
-                # Sincronizei as faixas da barra com as faixas de preço
-                faixas_limites = [0, 200, 500, 1000, 2000, 3000, 5000]
+                # Barra ajustada para o novo tier de 4000
+                faixas_limites = [0, 200, 500, 1000, 2000, 4000]
                 limite_anterior = 0
                 for L in faixas_limites:
                     if total_leads >= L: limite_anterior = L
