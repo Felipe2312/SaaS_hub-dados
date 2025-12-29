@@ -71,7 +71,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 SDK = mercadopago.SDK(MP_ACCESS_TOKEN)
 
 # ==========================================
-# 🧠 INTELIGÊNCIA DE CATEGORIZAÇÃO (V11 - Regex Compilado)
+# 🧠 INTELIGÊNCIA DE CATEGORIZAÇÃO (V11 - Regex Otimizado)
 # ==========================================
 
 CATEGORIAS_KEYWORDS = {
@@ -218,6 +218,7 @@ CATEGORIAS_KEYWORDS = {
 # --- COMPILAÇÃO DOS PATTERNS (Executado apenas 1 vez no deploy) ---
 REGEX_PATTERNS = {}
 for categoria, keywords in CATEGORIAS_KEYWORDS.items():
+    # Cria um regex do tipo: (palavra1|palavra2|palavra3)
     pattern_str = '|'.join(map(re.escape, keywords))
     REGEX_PATTERNS[categoria] = re.compile(pattern_str, re.IGNORECASE)
 
@@ -255,16 +256,14 @@ def classificar_telefone_global(tel):
         elif len(nums) == 10: return "Fixo"
     return "Outro"
 
-# --- LÓGICA DE PREÇO CORRIGIDA E CALIBRADA (Meta: 5k = R$ 520) ---
+# --- LÓGICA DE PREÇO (Ajustada: Entrada R$ 0,25 / Meta 5k = R$ 500) ---
 def calcular_preco_final(qtd):
     faixas = [
-        {"limite": 200, "preco": 0.35},
-        {"limite": 500, "preco": 0.25},
-        {"limite": 1000, "preco": 0.15},
-        {"limite": 2000, "preco": 0.10},
-        {"limite": 3000, "preco": 0.08},  # Degrau Restaurado
-        {"limite": 5000, "preco": 0.06},  # Ajuste Fino
-        {"limite": float('inf'), "preco": 0.04} # Atacado
+        {"limite": 300, "preco": 0.25},   # Entrada barata (R$ 25 a cada 100)
+        {"limite": 1000, "preco": 0.15},  # Incentivo rápido
+        {"limite": 3000, "preco": 0.10},  # Volume médio
+        {"limite": 5000, "preco": 0.06},  # Volume alto
+        {"limite": float('inf'), "preco": 0.04} # Atacado Real
     ]
     
     total = 0
@@ -287,8 +286,11 @@ def calcular_preco_final(qtd):
                 prox_preco_meta = faixas[i+1]["preco"]
             break
             
-    preco_medio = total / qtd if qtd > 0 else 0.35
-    valor_ancora = qtd * 0.35 
+    # Proteção para não dar erro de divisão por zero
+    preco_medio = total / qtd if qtd > 0 else 0.25
+    
+    # Âncora baseada no preço de entrada (0.25)
+    valor_ancora = qtd * 0.25 
     pct_off = int(((valor_ancora - total) / valor_ancora) * 100) if valor_ancora > 0 else 0
 
     return {
@@ -365,16 +367,14 @@ with st.expander("ℹ️ **Entenda o nosso Modelo de Economia**", expanded=False
         * ✅ **Data de Atualização** (Dados Recentes)
         """)
     with c_info2:
-        st.markdown("#### 📉 Descontos Rápidos")
-        st.info("Quanto mais você compra, maior o desconto nos leads excedentes.")
+        st.markdown("#### 📉 Descontos Progressivos")
+        st.info("Comece pequeno, escale pagando centavos.")
         st.markdown("""
-        | Faixa (Novos Leads) | Preço Marginal |
+        | Faixa (Leads Adicionais) | Preço Unitário |
         | :--- | :--- |
-        | Primeiros 200 | **R$ 0,35** |
-        | 201 a 500 | **R$ 0,25** |
-        | 501 a 1.000 | **R$ 0,15** |
-        | 1.001 a 2.000 | **R$ 0,10** |
-        | 2.001 a 3.000 | **R$ 0,08** |
+        | Primeiros 300 | **R$ 0,25** |
+        | 301 a 1.000 | **R$ 0,15** |
+        | 1.001 a 3.000 | **R$ 0,10** |
         | 3.001 a 5.000 | **R$ 0,06** |
         | + 5.000 | **R$ 0,04** |
         """)
@@ -498,8 +498,8 @@ else:
                 faltam = meta - total_leads
                 preco_futuro = resumo_preco['prox_preco_marginal']
                 
-                # Faixas de progresso (visual)
-                faixas_limites = [0, 200, 500, 1000, 2000, 3000, 5000]
+                # Barra ajustada para as novas faixas
+                faixas_limites = [0, 300, 1000, 3000, 5000]
                 limite_anterior = 0
                 for L in faixas_limites:
                     if total_leads >= L: limite_anterior = L
