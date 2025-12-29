@@ -734,7 +734,7 @@ with st.expander("👨‍💻 Área Técnica (Diagnóstico de 'Outros')"):
     
     if not df_outros.empty:
         # Conta a frequência de cada categoria perdida
-        top_missed = df_outros['categoria_google'].value_counts().head(100).reset_index()
+        top_missed = df_outros['categoria_google'].value_counts().reset_index()
         top_missed.columns = ['Nome da Categoria no Google', 'Quantidade de Leads']
         
         c_debug1, c_debug2 = st.columns([2, 1])
