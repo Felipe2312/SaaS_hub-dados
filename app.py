@@ -75,6 +75,11 @@ SDK = mercadopago.SDK(MP_ACCESS_TOKEN)
 # ==========================================
 
 # Dicionário de Keywords para Regex Compilado
+# ==========================================
+# 🧠 INTELIGÊNCIA DE CATEGORIZAÇÃO (V11 - A Perfeição)
+# ==========================================
+
+# Dicionário de Keywords para Regex Compilado
 CATEGORIAS_KEYWORDS = {
     "Saúde & Veterinária": [
         'médic', 'clinic', 'clínica', 'hospital', 'saúde', 'dentista', 'odonto', 'ortodon',
@@ -91,7 +96,7 @@ CATEGORIAS_KEYWORDS = {
         'reabilitação', 'ressonância', 'geriátrica', 'cuidados', 'dentário', 'dentadura',
         'prostodontista', 'médium', 'endoscopista', 'herbalista', 'interna', 'cirúrgico',
         'gestante', 'familia', 'paternidade', 'vacinação', 'sangue', 'medicina alternativa',
-        'hematologista', 'meditação', 'melhor idade'
+        'hematologista', 'meditação', 'melhor idade', 'hiv', 'aids', 'testagem'
     ],
     "Beleza & Estética": [
         'beleza', 'estétic', 'esteticista', 'salão', 'cabeleireiro', 'barbearia', 'manicure', 
@@ -169,7 +174,8 @@ CATEGORIAS_KEYWORDS = {
         'polícia', 'delegacia', 'justiça', 'tribunal', 'alfândega', 'holding', 'mapeamento', 'carreira',
         'divórcio', 'mediação', 'fiscal', 'social', 'desenvolvimento', 'religiosa', 'espírita', 
         'conselheiro', 'serigrafia', 'encadernador', 'service', 'serviços', 'comunidade', 'amparo',
-        'vítimas', 'assembléia', 'comunitário', 'casa lar', 'assistência', 'televisão', 'pequenas causas'
+        'vítimas', 'assembléia', 'comunitário', 'casa lar', 'assistência', 'televisão', 'pequenas causas',
+        'crematório', 'inspeção', 'sanitária', 'previsão', 'tempo'
     ],
     "Educação & Ensino": [
         'escola', 'colégio', 'faculdade', 'universidade', 'curso', 'idiomas', 'aula',
@@ -193,7 +199,8 @@ CATEGORIAS_KEYWORDS = {
         'praia', 'trilha', 'teleférico', 'entretenimento', 'retiro', 'vila', 'convenções',
         'estúdio', 'dj', 'club', 'aquário', 'casa de campo', 'férias', 'festival', 'animador',
         'balões', 'rock', 'lago', 'histórico', 'exibição', 'lapidário', 'numerólogo', 'life coach',
-        'tobogã', 'sala vip', 'panorâmico', 'lodge', 'visitantes', 'central'
+        'tobogã', 'sala vip', 'panorâmico', 'lodge', 'visitantes', 'central', 'conferências',
+        'off-road', 'off road', 'escultura'
     ],
     "Indústria & Transformação": [
         'indústria', 'industrial', 'fábrica', 'fabricante', 'confecção', 'metalúrgica', 'siderúrgica', 
@@ -210,7 +217,7 @@ CATEGORIAS_KEYWORDS = {
         'criação', 'criador', 'apiário', 'orquidário', 'canil', 'peixes', 'pesca', 'jardim',
         'selaria', 'rancho', 'avícola', 'florestal', 'gado', 'curtume', 'cavalo', 'pássaro',
         'abelha', 'aquicultura', 'agricultura', 'pomar', 'árvores', 'feira', 'babá', 'treinador',
-        'ferrador', 'controle', 'vinhedo', 'granja', 'reserva'
+        'ferrador', 'controle', 'vinhedo', 'granja', 'reserva', 'animais'
     ]
 }
 
