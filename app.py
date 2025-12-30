@@ -394,7 +394,7 @@ with st.container(border=True):
     
     with c1: busca_nome = st.text_input("Buscar Nome", placeholder="Ex: Silva...")
     with c2: nota_range = st.select_slider("Nota Mínima", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
-    with c3: avaliacoes_range = st.slider("Qtd. Avaliações", 0, 1000, (0, 1000), help="Filtre pela quantidade de reviews.")
+    with c3: avaliacoes_range = st.slider("Qtd. Avaliações", 0, 5000, (0, 5000), help="Filtre pela quantidade de reviews.")
     with c4: filtro_site = st.radio("Site?", ["Todos", "Sim", "Não"], horizontal=True)
     with c5: filtro_tel = st.radio("Telefone", ["Todos (Móvel/Fixo)", "Apenas Celular", "Apenas Fixo"], horizontal=True, index=0)
 
@@ -441,7 +441,7 @@ elif filtro_site == "Não": df_f = df_f[df_f['site'].isnull()]
 df_f = df_f[(df_f['nota'] >= nota_range[0]) & (df_f['nota'] <= nota_range[1])]
 
 min_aval, max_aval = avaliacoes_range
-if max_aval == 1000:
+if max_aval == 5000:
     df_f = df_f[df_f['avaliacoes'] >= min_aval]
 else:
     df_f = df_f[(df_f['avaliacoes'] >= min_aval) & (df_f['avaliacoes'] <= max_aval)]
@@ -452,7 +452,7 @@ if f_uf: df_f = df_f[df_f['estado'].isin(f_uf)]
 if f_cidade: df_f = df_f[df_f['cidade'].isin(f_cidade)]
 if f_bairro: df_f = df_f[df_f['bairro'].isin(f_bairro)]
 
-filtro_aval_ativo = (avaliacoes_range[0] > 0) or (avaliacoes_range[1] < 1000)
+filtro_aval_ativo = (avaliacoes_range[0] > 0) or (avaliacoes_range[1] < 5000)
 filtros_ativos = any([busca_nome, f_macro, f_google, f_uf, f_cidade, f_bairro, filtro_aval_ativo])
 
 if not filtros_ativos:
@@ -714,4 +714,3 @@ with col_f2:
         """)
     st.caption(f"© 2025 {NOME_MARCA} - Todos os direitos reservados.")
     st.caption(f"CNPJ: 61.957.100/0001-03")
-    
