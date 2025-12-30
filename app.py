@@ -303,6 +303,7 @@ def calcular_preco_final(qtd):
     }
 
 # CACHE DE 24 HORAS
+# CACHE DE 24 HORAS
 @st.cache_data(ttl=86400)
 def get_all_data():
     all_rows = []
@@ -341,6 +342,18 @@ def get_all_data():
         else:
             df['data_fmt'] = datetime.today().strftime('%d/%m/%Y')
         
+        # --- CORREÇÃO DE URL (NOVO) ---
+        def limpar_url_site(url):
+            if not url: return None
+            url_str = str(url).strip()
+            # Remove links internos do Google Business que não são sites reais
+            if "business.google.com" in url_str: return None
+            if "google.com/view" in url_str: return None # Opcional: remove sites gratuitos do Google se quiser ser rigoroso
+            return url_str
+
+        df['site'] = df['site'].apply(limpar_url_site)
+        # ------------------------------
+
         # FILTRO DE QUALIDADE (Apenas Celular ou Fixo entram)
         df = df[df['tipo_contato'].isin(['Celular', 'Fixo'])]
         
