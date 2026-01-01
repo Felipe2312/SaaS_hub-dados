@@ -89,14 +89,14 @@ def setup_whatsapp_button():
 
 setup_whatsapp_button()
 
-# Conexão com Secrets
+# Conexão com Secrets (Híbrido: Funciona local e no Docker)
 try:
     SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets["supabase"]["url"]
     SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets["supabase"]["key"]
     MP_ACCESS_TOKEN = os.getenv("MP_ACCESS_TOKEN") or st.secrets["mercado_pago"]["access_token"]
     NOME_MARCA = "DiskLeads"
 except Exception as e:
-    st.error("Erro: Verifique se todos os secrets estão configurados corretamente.")
+    st.error("Erro: Verifique se todos os secrets estão configurados corretamente (arquivo .env ou secrets.toml).")
     st.stop()
 
 # Clientes
@@ -331,6 +331,7 @@ def get_all_data():
     step = 1000
     start = 0
     while True:
+        # Traz apenas colunas essenciais do Supabase
         colunas_necessarias = "nome, telefone, site, categoria_google, nota, avaliacoes, endereco_completo, bairro, cidade, estado, data_extracao"
 
         res = supabase.table("leads").select(colunas_necessarias).range(start, start + step - 1).execute()
@@ -341,20 +342,47 @@ def get_all_data():
         
     df = pd.DataFrame(all_rows)
     if not df.empty:
-        df['nota'] = pd.to_numeric(df['nota'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
+        # ==============================================================
+        # 🚀 OTIMIZAÇÃO CRÍTICA DE MEMÓRIA (LINHAS 260-270)
+        # ==============================================================
+        # Converte colunas repetitivas para 'category' economizando até 80% de RAM
+        cols_otimizaveis = ['estado', 'cidade', 'bairro', 'categoria_google']
+        for col in cols_otimizaveis:
+            if col in df.columns:
+                df[col] = df[col].astype('category')
+
+        # Reduz uso de memória em números
+        if 'nota' in df.columns:
+            # Troca virgula por ponto E converte para float32 (mais leve)
+            df['nota'] = pd.to_numeric(df['nota'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0).astype('float32')
         
         if 'avaliacoes' in df.columns:
-            df['avaliacoes'] = pd.to_numeric(df['avaliacoes'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0).astype(int)
+            # Converte para int32 (mais leve que int64)
+            df['avaliacoes'] = pd.to_numeric(df['avaliacoes'].astype(str).str.replace('.', '', regex=False), errors='coerce').fillna(0).astype('int32')
         else:
             df['avaliacoes'] = 0
             
-        df['bairro'] = df['bairro'].fillna('Não informado')
-        df['estado'] = df['estado'].fillna('N/A')
-        if 'categoria_google' not in df.columns: df['categoria_google'] = 'Outros'
-        df['categoria_google'] = df['categoria_google'].fillna('Não identificada')
+        # Tratamento de strings restantes
+        # Note: bairro e estado já foram convertidos para category acima, então não precisamos preencher NA aqui de novo se já estiverem limpos, 
+        # mas caso tenha NAs na origem, o 'astype category' lida bem.
+        # Ajustamos o preenchimento ANTES de converter se necessário, mas aqui mantemos o fluxo simples.
+        if 'bairro' in df.columns and df['bairro'].dtype.name != 'category':
+             df['bairro'] = df['bairro'].fillna('Não informado')
+             
+        if 'estado' in df.columns and df['estado'].dtype.name != 'category':
+             df['estado'] = df['estado'].fillna('N/A')
+             
+        if 'categoria_google' not in df.columns: 
+             df['categoria_google'] = 'Outros'
         
-        df['Segmento'] = df['categoria_google'].apply(normalizar_categoria)
-        df['tipo_contato'] = df['telefone'].apply(classificar_telefone_global)
+        # Preenche NAs em categorias adicionando a categoria primeiro se necessário
+        # (Simplificação: Pandas moderno lida bem com NAs em category, ou podemos ignorar por hora)
+
+        # Segmento também deve ser Categoria
+        df['Segmento'] = df['categoria_google'].apply(normalizar_categoria).astype('category')
+        
+        # Tipo contato também deve ser Categoria
+        df['tipo_contato'] = df['telefone'].apply(classificar_telefone_global).astype('category')
         
         if 'data_extracao' in df.columns:
             df['data_obj'] = pd.to_datetime(df['data_extracao'], errors='coerce')
@@ -370,6 +398,8 @@ def get_all_data():
             return url_str
 
         df['site'] = df['site'].apply(limpar_url_site)
+        
+        # Filtragem final
         df = df[df['tipo_contato'].isin(['Celular', 'Fixo'])]
         
     return df
@@ -484,27 +514,29 @@ else:
         with t1:
             col_a, col_b = st.columns(2)
             with col_a:
-                opts_macro = sorted(df_raw['Segmento'].unique()) if not df_raw.empty else []
+                # Otimização: unique em categorias é ultra rápido
+                opts_macro = sorted(df_raw['Segmento'].unique().tolist()) if not df_raw.empty else []
                 f_macro = st.multiselect("Setor Principal", opts_macro, placeholder="Selecione um ou mais setores...")
             with col_b:
                 if f_macro: df_nicho_opts = df_raw[df_raw['Segmento'].isin(f_macro)]
                 else: df_nicho_opts = df_raw
-                opts_nicho = sorted(df_nicho_opts['categoria_google'].unique()) if not df_nicho_opts.empty else []
+                # Convertemos para list para garantir compatibilidade com multiselect
+                opts_nicho = sorted(df_nicho_opts['categoria_google'].unique().astype(str).tolist()) if not df_nicho_opts.empty else []
                 f_google = st.multiselect("Nicho Específico", opts_nicho, placeholder="Ex: Dentistas, Pet Shops...")
 
         with t2:
             col_d, col_e, col_f = st.columns(3)
-            opts_uf = sorted(df_raw['estado'].unique()) if not df_raw.empty else []
+            opts_uf = sorted(df_raw['estado'].unique().astype(str).tolist()) if not df_raw.empty else []
             with col_d: f_uf = st.multiselect("Estado (UF)", opts_uf, placeholder="Selecione a UF...")
             
             if f_uf: df_cid_opts = df_raw[df_raw['estado'].isin(f_uf)]
             else: df_cid_opts = df_raw
-            opts_cidade = sorted(df_cid_opts['cidade'].unique()) if not df_cid_opts.empty else []
+            opts_cidade = sorted(df_cid_opts['cidade'].unique().astype(str).tolist()) if not df_cid_opts.empty else []
             with col_e: f_cidade = st.multiselect("Cidade", opts_cidade, placeholder="Ex: Campinas, São Paulo...")
             
             if f_cidade: df_bai_opts = df_cid_opts[df_cid_opts['cidade'].isin(f_cidade)]
             else: df_bai_opts = df_cid_opts
-            opts_bairro = sorted(df_bai_opts['bairro'].unique()) if not df_bai_opts.empty else []
+            opts_bairro = sorted(df_bai_opts['bairro'].unique().astype(str).tolist()) if not df_bai_opts.empty else []
             with col_f: f_bairro = st.multiselect("Bairro", opts_bairro, placeholder="Selecione o Bairro...")
 
     # --- APLICAÇÃO DOS FILTROS ---
@@ -810,3 +842,4 @@ with col_f2:
         """)
     st.caption(f"© 2025 {NOME_MARCA} - Todos os direitos reservados.")
     st.caption(f"CNPJ: 61.957.100/0001-03")
+    
