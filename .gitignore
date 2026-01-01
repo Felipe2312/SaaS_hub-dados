@@ -19,5 +19,4 @@ Thumbs.db
 # Arquivos de dados locais (se houver)
 *.csv
 *.xlsx
-*.parquet
 *.db

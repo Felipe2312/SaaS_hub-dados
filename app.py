@@ -13,7 +13,7 @@ import math
 # ==========================================
 st.set_page_config(page_title="DiskLeads", layout="wide", page_icon="🚀")
 
-# CSS Ajustado: Removemos o warning-box amarelo agressivo
+# CSS Ajustado
 st.markdown("""
 <style>
     .stDeployButton {display:none;}
@@ -152,18 +152,14 @@ def get_local_data():
         return pd.DataFrame()
     try:
         df = pd.read_parquet(CACHE_FILE)
-        
-        # Padronização de Colunas
         if 'segmento' in df.columns:
             df.rename(columns={'segmento': 'Segmento'}, inplace=True)
-            
         if 'data_extracao' in df.columns:
             if not pd.api.types.is_datetime64_any_dtype(df['data_extracao']):
                 df['data_extracao'] = pd.to_datetime(df['data_extracao'], errors='coerce')
             df['data_fmt'] = df['data_extracao'].dt.strftime('%d/%m/%Y').fillna(datetime.today().strftime('%d/%m/%Y'))
         else:
             df['data_fmt'] = datetime.today().strftime('%d/%m/%Y')
-
         return df
     except Exception as e:
         return pd.DataFrame()
@@ -205,7 +201,6 @@ if is_pago:
             if st.button("🔄 Nova Busca", use_container_width=True):
                 st.session_state.clear()
                 st.rerun()
-                
     except Exception as e:
         st.error("Erro ao recuperar arquivo. Contate o suporte.")
 
@@ -336,9 +331,7 @@ else:
             st.divider()
 
             if total_leads == 0:
-                # --- DESIGN DE ZERO RESULTADOS (CLEAN) ---
                 st.info("🔍 Nenhum resultado encontrado para esses filtros.")
-                
                 with st.container(border=True):
                     st.markdown("#### 🚀 Precisa desses dados específicos?")
                     st.caption("Nossa equipe pode minerar essa lista para você sob demanda com **25% de desconto**.")
@@ -371,7 +364,6 @@ else:
                     else:
                           st.success(f"💎 **Nível Atacado:** Você desbloqueou o menor preço do mercado!")
 
-                # --- BANNER DE OPORTUNIDADE (DISCRETO) ---
                 with st.container(border=True):
                     col_txt, col_btn = st.columns([3, 1])
                     with col_txt:
@@ -395,6 +387,20 @@ else:
 
                     if st.button("💳 IR PARA PAGAMENTO SEGURO", type="primary", use_container_width=True, disabled=not pode_prosseguir):
                         
+                        # --- CAPTURA DE FILTROS PARA UX E DADOS ---
+                        lista_filtros = []
+                        if busca_nome: lista_filtros.append(f"Nome: {busca_nome}")
+                        if f_macro: lista_filtros.append(f"Setor: {', '.join(f_macro)}")
+                        if f_google: lista_filtros.append(f"Nicho: {', '.join(f_google)}")
+                        if f_uf: lista_filtros.append(f"UF: {', '.join(f_uf)}")
+                        if f_cidade: lista_filtros.append(f"Cidade: {', '.join(f_cidade)}")
+                        if f_bairro: lista_filtros.append(f"Bairro: {', '.join(f_bairro)}")
+                        if filtro_tel != "Todos (Móvel/Fixo)": lista_filtros.append(f"Tel: {filtro_tel}")
+                        if nota_range != (0.0, 5.0): lista_filtros.append(f"Nota: {nota_range[0]}-{nota_range[1]}")
+                        
+                        resumo_filtros_str = " | ".join(lista_filtros) if lista_filtros else "Todos os dados (Sem filtros)"
+
+                        # --- PREPARA ARQUIVO EXCEL FINAL ---
                         df_final = pd.DataFrame()
                         df_final['Empresa'] = df_f['nome']
                         df_final['Tipo de Telefone'] = df_f['tipo_contato']
@@ -427,12 +433,14 @@ else:
                         )
                         url_publica = supabase.storage.from_('leads_pedidos').get_public_url(nome_arquivo)
 
+                        # Salva venda COM OS FILTROS
                         supabase.table("vendas").upsert({
                             "external_reference": st.session_state.ref_venda,
                             "valor": valor_total,
                             "status": "pendente",
                             "email_cliente": email_input,
-                            "url_arquivo": url_publica
+                            "url_arquivo": url_publica,
+                            "detalhes_filtro": resumo_filtros_str # <--- SALVANDO O FILTRO AQUI
                         }).execute()
 
                         pref_data = {
@@ -469,7 +477,6 @@ else:
             if total_leads > 0:
                 st.markdown(" Quer validar antes? Baixe os **5 primeiros leads** completos agora.")
                 
-                # --- AMOSTRA GRÁTIS COM AS MESMAS COLUNAS DO PAGO ---
                 raw_amostra = df_f.head(5).copy()
                 for col in raw_amostra.select_dtypes(['category']).columns:
                     raw_amostra[col] = raw_amostra[col].astype(str)
@@ -505,7 +512,6 @@ else:
                     help="Baixe 5 leads reais para testar a qualidade."
                 )
 
-            # Preview na Tela
             df_preview = pd.DataFrame()
             df_preview['Empresa'] = df_f['nome']
             df_preview['Telefone'] = df_f['telefone'].apply(lambda x: str(x)[:-4] + "****" if x and len(str(x)) > 4 else "****")
