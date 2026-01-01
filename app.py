@@ -542,3 +542,4 @@ with col_f2:
     st.markdown("#### ⚖️ Termos e Privacidade")
     st.caption("© 2025 DiskLeads - Todos os direitos reservados.")
     st.caption("CNPJ: 61.957.100/0001-03")
+    
