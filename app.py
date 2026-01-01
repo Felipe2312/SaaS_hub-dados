@@ -14,7 +14,7 @@ import re
 # ==========================================
 st.set_page_config(page_title="DiskLeads", layout="wide", page_icon="🚀")
 
-# CSS para esconder elementos padrões e dar destaque
+# CSS para esconder elementos padrões e dar destaque ao botão flutuante
 st.markdown("""
 <style>
     .stDeployButton {display:none;}
@@ -27,6 +27,21 @@ st.markdown("""
         margin-bottom: 20px;
         text-align: center;
         font-weight: bold;
+    }
+    /* Tooltip do WhatsApp Flutuante */
+    .float:hover:after {
+        content: "Precisa de ajuda?";
+        position: absolute;
+        right: 70px;
+        top: 15px;
+        background: #333;
+        color: white;
+        padding: 5px 10px;
+        border-radius: 5px;
+        white-space: nowrap;
+        font-size: 14px;
+        box-shadow: 1px 1px 3px #888;
+        pointer-events: none;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -74,6 +89,7 @@ def setup_whatsapp_button():
 
 setup_whatsapp_button()
 
+# Conexão com Secrets
 try:
     SUPABASE_URL = os.getenv("SUPABASE_URL") or st.secrets["supabase"]["url"]
     SUPABASE_KEY = os.getenv("SUPABASE_KEY") or st.secrets["supabase"]["key"]
@@ -236,6 +252,8 @@ for categoria, keywords in CATEGORIAS_KEYWORDS.items():
     pattern_str = '|'.join(map(re.escape, keywords))
     REGEX_PATTERNS[categoria] = re.compile(pattern_str, re.IGNORECASE)
 
+# --- FUNÇÕES AUXILIARES ---
+
 def normalizar_categoria(cat_google):
     if not cat_google or str(cat_google).strip() == "" or str(cat_google).lower() == "não identificada":
         return "Não Identificada / Outros"
@@ -261,9 +279,17 @@ def classificar_telefone_global(tel):
         elif len(nums) == 10: return "Fixo"
     return "Outro"
 
+# Função para gerar link do WhatsApp (GLOBAL para uso em Excel e Preview)
+def gerar_link_wa(row):
+    if row['tipo_contato'] == "Celular":
+        nums = "".join(filter(str.isdigit, str(row['telefone'])))
+        if not nums.startswith("55"): nums = f"55{nums}"
+        return f"https://wa.me/{nums}"
+    return ""
+
 def calcular_preco_final(qtd):
     faixas = [
-        {"limite": 300, "preco": 0.25},   
+        {"limite": 300, "preco": 0.25},    
         {"limite": 1000, "preco": 0.15},
         {"limite": 3000, "preco": 0.10}, 
         {"limite": 5000, "preco": 0.06}, 
@@ -305,12 +331,14 @@ def get_all_data():
     step = 1000
     start = 0
     while True:
-        res = supabase.table("leads").select("*").range(start, start + step - 1).execute()
+        colunas_necessarias = "nome, telefone, site, categoria_google, nota, avaliacoes, endereco_completo, bairro, cidade, estado, data_extracao"
+
+        res = supabase.table("leads").select(colunas_necessarias).range(start, start + step - 1).execute()
         rows = res.data
         all_rows.extend(rows)
         if len(rows) < step: break
         start += step
-    
+        
     df = pd.DataFrame(all_rows)
     if not df.empty:
         df['nota'] = pd.to_numeric(df['nota'].astype(str).str.replace(',', '.'), errors='coerce').fillna(0)
@@ -405,6 +433,9 @@ else:
     st.markdown("### A plataforma de inteligência de dados locais.")
     st.caption("Enriqueça seu CRM com dados públicos, atualizados e validados do Google Maps.")
 
+    # --- MELHORIA 1: Guia Rápido ---
+    st.info("💡 **Como usar:** 1. Filtre pelo seu Nicho e Cidade > 2. Baixe uma amostra grátis > 3. Garanta a lista completa.")
+
     # --- TABELA DE PREÇOS ---
     with st.expander("ℹ️ **Entenda o nosso Modelo de Economia**", expanded=False):
         c_info1, c_info2 = st.columns([1.2, 1])
@@ -441,7 +472,8 @@ else:
         st.subheader("🛠️ Configure sua Lista")
         c1, c2, c3, c4, c5 = st.columns([2, 1.5, 1.5, 1, 1])
         
-        with c1: busca_nome = st.text_input("Buscar Nome", placeholder="Ex: Silva...")
+        # --- MELHORIA 2: Placeholders ---
+        with c1: busca_nome = st.text_input("Buscar Nome", placeholder="Ex: Padaria do João, Oficina...")
         with c2: nota_range = st.select_slider("Nota Mínima", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
         with c3: avaliacoes_range = st.slider("Qtd. Avaliações", 0, 5000, (0, 5000), step=10, help="Filtre pela popularidade.")
         with c4: filtro_site = st.radio("Site?", ["Todos", "Sim", "Não"], horizontal=True)
@@ -453,27 +485,27 @@ else:
             col_a, col_b = st.columns(2)
             with col_a:
                 opts_macro = sorted(df_raw['Segmento'].unique()) if not df_raw.empty else []
-                f_macro = st.multiselect("Setor Principal", opts_macro)
+                f_macro = st.multiselect("Setor Principal", opts_macro, placeholder="Selecione um ou mais setores...")
             with col_b:
                 if f_macro: df_nicho_opts = df_raw[df_raw['Segmento'].isin(f_macro)]
                 else: df_nicho_opts = df_raw
                 opts_nicho = sorted(df_nicho_opts['categoria_google'].unique()) if not df_nicho_opts.empty else []
-                f_google = st.multiselect("Nicho Específico", opts_nicho)
+                f_google = st.multiselect("Nicho Específico", opts_nicho, placeholder="Ex: Dentistas, Pet Shops...")
 
         with t2:
             col_d, col_e, col_f = st.columns(3)
             opts_uf = sorted(df_raw['estado'].unique()) if not df_raw.empty else []
-            with col_d: f_uf = st.multiselect("Estado (UF)", opts_uf)
+            with col_d: f_uf = st.multiselect("Estado (UF)", opts_uf, placeholder="Selecione a UF...")
             
             if f_uf: df_cid_opts = df_raw[df_raw['estado'].isin(f_uf)]
             else: df_cid_opts = df_raw
             opts_cidade = sorted(df_cid_opts['cidade'].unique()) if not df_cid_opts.empty else []
-            with col_e: f_cidade = st.multiselect("Cidade", opts_cidade)
+            with col_e: f_cidade = st.multiselect("Cidade", opts_cidade, placeholder="Ex: Campinas, São Paulo...")
             
             if f_cidade: df_bai_opts = df_cid_opts[df_cid_opts['cidade'].isin(f_cidade)]
             else: df_bai_opts = df_cid_opts
             opts_bairro = sorted(df_bai_opts['bairro'].unique()) if not df_bai_opts.empty else []
-            with col_f: f_bairro = st.multiselect("Bairro", opts_bairro)
+            with col_f: f_bairro = st.multiselect("Bairro", opts_bairro, placeholder="Selecione o Bairro...")
 
     # --- APLICAÇÃO DOS FILTROS ---
     df_f = df_raw.copy()
@@ -519,8 +551,24 @@ else:
 
         st.divider()
 
+        # --- MELHORIA 3: Tratamento de Zero Resultados ---
         if total_leads == 0:
-            st.warning("⚠️ Nenhum lead encontrado com os filtros selecionados.")
+            st.markdown("""
+            <div class="warning-box">
+            ⚠️ Ainda não temos leads com esses critérios exatos.
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown("### 📢 Mas nós conseguimos ela para você!")
+            st.write("Nossa equipe pode fazer uma varredura personalizada agora. Como você nos ajuda a mapear, ganha **25% de DESCONTO**.")
+            
+            msg_encomenda = "Olá, tentei buscar uma lista no site e não encontrei resultados. Gostaria de encomendar uma varredura personalizada com 25% de desconto."
+            st.link_button(
+                "💎 Encomendar Varredura com 25% OFF", 
+                f"https://wa.me/5511963048466?text={msg_encomenda.replace(' ', '%20')}",
+                type="primary"
+            )
+
         else:
             with st.container(border=True):
                 c1, c2, c3 = st.columns([1, 1, 1])
@@ -533,38 +581,55 @@ else:
                     st.markdown(f"### {fmt_real(resumo_preco['unitario_medio'])}")
                 with c3:
                     st.caption("Total a Pagar")
-                    if resumo_preco['pct_off'] > 0:
-                          st.markdown(f"""
-                        <div style="display: flex; align-items: center; gap: 10px;">
-                            <span style="text-decoration: line-through; color: #ff4b4b; font-size: 14px;">{fmt_real(resumo_preco['total_ancora'])}</span>
-                            <span style="background-color: #d4edda; color: #155724; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: bold;">-{resumo_preco['pct_off']}% OFF</span>
-                        </div>""", unsafe_allow_html=True)
                     st.markdown(f"<h3 style='color:#2ecc71; margin-top:0px'>{fmt_real(resumo_preco['total'])}</h3>", unsafe_allow_html=True)
+                    if resumo_preco['pct_off'] > 0:
+                        st.markdown(f"<span style='background-color: #d4edda; color: #155724; padding: 2px 6px; border-radius: 4px; font-size: 12px; font-weight: bold;'>-{resumo_preco['pct_off']}% OFF</span>", unsafe_allow_html=True)
 
                 if resumo_preco['prox_qtd']:
                     meta = resumo_preco['prox_qtd']
                     faltam = meta - total_leads
                     preco_futuro = resumo_preco['prox_preco_marginal']
+                    
+                    # Barra de progresso visual
                     faixas_limites = [0, 300, 1000, 3000, 5000]
                     limite_anterior = 0
                     for L in faixas_limites:
                         if total_leads >= L: limite_anterior = L
                         else: break
+                    
                     denominador = meta - limite_anterior
                     numerador = total_leads - limite_anterior
-                    progresso = min(numerador / denominador, 0.95) if denominador > 0 else 0
+                    # Evitar divisão por zero e travar em 95% visualmente
+                    if denominador > 0:
+                        progresso = min(numerador / denominador, 0.95)
+                    else:
+                        progresso = 0
+                        
                     st.write("")
                     st.progress(progresso)
-                    st.info(f"""
-                    💡 **Falta pouco:** Adicione mais **{faltam} leads** para que os próximos custem apenas **{fmt_real(preco_futuro)}** cada!
-                    """)
+                    st.caption(f"💡 Falta pouco: Adicione mais **{faltam} leads** para pagar só **{fmt_real(preco_futuro)}** nos próximos!")
                 else:
-                     st.success(f"💎 **Nível Atacado:** Você desbloqueou o menor preço do mercado ({fmt_real(0.04)}/lead nos adicionais)!")
+                      st.success(f"💎 **Nível Atacado:** Você desbloqueou o menor preço do mercado ({fmt_real(0.04)}/lead nos adicionais)!")
+
+            # --- MELHORIA 4: Banner de Oportunidade (Dark Mode Ready) ---
+            st.warning("🕵️ **Não encontrou tudo o que queria?** Nossa base cresce todo dia. Encomende o que falta e ganhe **25% de DESCONTO**.")
+            
+            msg_banner = "Olá, encontrei alguns leads no site, mas queria encomendar uma lista maior/específica com o desconto de 25%."
+            st.link_button(
+                "👉 Encomendar Varredura Personalizada", 
+                f"https://wa.me/5511963048466?text={msg_banner.replace(' ', '%20')}",
+                type="primary",
+                use_container_width=True
+            )
+            
+            st.write("") # Espaço
 
             with st.container(border=True):
                 st.subheader("📬 Finalizar Compra")
                 ce1, ce2 = st.columns(2)
-                with ce1: email_input = st.text_input("Seu E-mail", placeholder="seu@email.com")
+                
+                # --- AJUSTE UX: Texto de Ajuda no E-mail ---
+                with ce1: email_input = st.text_input("Seu E-mail", placeholder="seu@email.com", help="Garante que você receba o arquivo mesmo se fechar a página.")
                 with ce2: email_confirm = st.text_input("Confirme seu E-mail", placeholder="seu@email.com")
                 
                 if email_input and email_confirm and (email_input != email_confirm):
@@ -577,17 +642,18 @@ else:
                     # Prepara e sobe arquivo AGORA
                     df_final = pd.DataFrame()
                     df_final['Empresa'] = df_f['nome']
-                    df_final['Telefone'] = df_f['telefone']
+                    
+                    # --- REORDENAÇÃO DAS COLUNAS AQUI (VERSÃO PAGA) ---
+                    # 1. Tipo antes do número
                     df_final['Tipo de Telefone'] = df_f['tipo_contato']
                     
-                    def gerar_link(row):
-                        if row['tipo_contato'] == "Celular":
-                            nums = "".join(filter(str.isdigit, str(row['telefone'])))
-                            if not nums.startswith("55"): nums = f"55{nums}"
-                            return f"https://wa.me/{nums}"
-                        return ""
-                    df_final['Link WhatsApp'] = df_f.apply(gerar_link, axis=1)
+                    # 2. Número
+                    df_final['Telefone'] = df_f['telefone']
                     
+                    # 3. Link logo após o número
+                    df_final['Link WhatsApp'] = df_f.apply(gerar_link_wa, axis=1)
+                    
+                    # 4. Restante das colunas originais
                     df_final['Atualizado em'] = df_f['data_fmt']
                     df_final['Setor Principal'] = df_f['Segmento']
                     df_final['Nicho Específico'] = df_f['categoria_google']
@@ -653,17 +719,55 @@ else:
 
         # 3. Análise Visual (Só aparece se NÃO pago)
         st.divider()
-        st.subheader("📊 Raio-X da Base Selecionada")
-        g1, g2, g3 = st.columns(3)
-        with g1: st.bar_chart(df_f['cidade'].value_counts().head(10), color="#2E66F1", horizontal=True)
-        with g2: st.bar_chart(df_f['bairro'].value_counts().head(10), color="#2ecc71", horizontal=True)
-        with g3: st.bar_chart(df_f['Segmento'].value_counts(), color="#f39c12", horizontal=True)
-
         st.subheader("📋 Amostra dos Dados (Top 50)")
         
+        # --- MELHORIA 5: Botão Amostra Grátis (Download Real e Igual ao Pago) ---
+        if total_leads > 0:
+            st.markdown(" Quer validar antes? Baixe os **5 primeiros leads** completos (sem máscara) agora.")
+            
+            # 1. Pega os dados brutos (Top 5)
+            raw_amostra = df_f.head(5).copy()
+
+            # 2. Cria o DF formatado igual ao pago (MESMA ESTRUTURA)
+            df_amostra_final = pd.DataFrame()
+            df_amostra_final['Empresa'] = raw_amostra['nome']
+            df_amostra_final['Tipo de Telefone'] = raw_amostra['tipo_contato']
+            df_amostra_final['Telefone'] = raw_amostra['telefone']
+            df_amostra_final['Link WhatsApp'] = raw_amostra.apply(gerar_link_wa, axis=1)
+            df_amostra_final['Atualizado em'] = raw_amostra['data_fmt']
+            df_amostra_final['Setor Principal'] = raw_amostra['Segmento']
+            df_amostra_final['Nicho Específico'] = raw_amostra['categoria_google']
+            df_amostra_final['Nota Google'] = raw_amostra['nota']
+            df_amostra_final['Qtd Avaliações'] = raw_amostra['avaliacoes']
+            df_amostra_final['Endereço Completo'] = raw_amostra['endereco_completo']
+            df_amostra_final['Bairro'] = raw_amostra['bairro']
+            df_amostra_final['Cidade'] = raw_amostra['cidade']
+            df_amostra_final['UF'] = raw_amostra['estado']
+            df_amostra_final['Site'] = raw_amostra['site']
+            
+            buffer_amostra = io.BytesIO()
+            with pd.ExcelWriter(buffer_amostra, engine='xlsxwriter') as writer_amostra:
+                df_amostra_final.to_excel(writer_amostra, index=False, sheet_name='Amostra')
+                worksheet = writer_amostra.sheets['Amostra']
+                worksheet.set_column('A:A', 30) # Empresa
+                worksheet.set_column('D:D', 25) # Link WhatsApp
+            
+            st.download_button(
+                label="🎁 BAIXAR AMOSTRA GRÁTIS (Top 5)",
+                data=buffer_amostra.getvalue(),
+                file_name="amostra_diskleads_top5.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Baixe 5 leads reais para testar a qualidade."
+            )
+
         df_preview = pd.DataFrame()
         df_preview['Empresa'] = df_f['nome']
+        # Mascaramos a visualização na tela para forçar o download ou compra
         df_preview['Telefone'] = df_f['telefone'].apply(lambda x: str(x)[:-4] + "****" if x and len(str(x)) > 4 else "****")
+        
+        # Mostra na tabela que o link existe, mas está bloqueado
+        df_preview['Link WhatsApp'] = df_f['tipo_contato'].apply(lambda x: "🔒 No Excel" if x == "Celular" else "-")
+        
         df_preview['Tipo'] = df_f['tipo_contato']
         df_preview['Setor'] = df_f['Segmento']
         df_preview['Nicho'] = df_f['categoria_google']
@@ -673,6 +777,14 @@ else:
         df_preview['Atualizado em'] = df_f['data_fmt']
         
         st.dataframe(df_preview.head(50), use_container_width=True, hide_index=True)
+
+        st.divider()
+        st.subheader("📊 Raio-X da Base Selecionada")
+        g1, g2, g3 = st.columns(3)
+        with g1: st.bar_chart(df_f['cidade'].value_counts().head(10), color="#2E66F1", horizontal=True)
+        with g2: st.bar_chart(df_f['bairro'].value_counts().head(10), color="#2ecc71", horizontal=True)
+        with g3: st.bar_chart(df_f['Segmento'].value_counts(), color="#f39c12", horizontal=True)
+
 
 # ==========================================
 # 🛡️ RODAPÉ E SUPORTE
