@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  # O Site (Streamlit) - Fica na porta 8501
+  web:
+    build: .
+    container_name: diskleads_app
+    restart: always
+    ports:
+      - "8501:8501"
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data  # <--- COMPARTILHAMENTO DE ARQUIVO
+    command: streamlit run app.py --server.port=8501 --server.address=0.0.0.0
+
+  # O Robô de Atualização (Updater) - Roda em background
+  updater:
+    build: .
+    container_name: diskleads_updater
+    restart: always
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data  # <--- MESMA PASTA DO WEB
+    command: python updater.py
