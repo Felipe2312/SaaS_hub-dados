@@ -275,15 +275,11 @@ else:
         with st.container(border=True):
             st.subheader("🛠️ Configure sua Lista")
             
-            # --- [ALTERAÇÃO 1] REMOVIDA BARRA DE PESQUISA ---
-            # Agora temos apenas 4 colunas de filtros técnicos
+            # --- 1. FILTROS TÉCNICOS (TOPO DO FUNIL) ---
             c2, c3, c4, c5 = st.columns([1.5, 1.5, 1, 1])
             
-            # Cria um DF Base para popular os dropdowns (sem filtro de nome agora)
-            df_options = df_raw.copy()
-
             with c2: 
-                nota_range = st.select_slider("⭐ Nota Mínima", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0), help="Filtre pela qualidade das avaliações.")
+                nota_range = st.select_slider("⭐ Nota Mínima", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0), help="Filtre pela qualidade.")
             with c3: 
                 avaliacoes_range = st.slider("🗣️ Qtd. Avaliações", 0, 5000, (0, 5000), step=10, help="Filtre pela popularidade.")
             with c4: 
@@ -291,62 +287,88 @@ else:
             with c5: 
                 filtro_tel = st.radio("📞 Telefone", ["Todos", "Celular", "Fixo"], horizontal=True, index=0)
 
-            st.divider() # Linha para separar visualmente filtros técnicos de segmentação
+            st.divider()
 
+            # --- LÓGICA DE CASCATA (PREPARAÇÃO DOS DADOS) ---
+            # Aqui aplicamos os filtros técnicos ANTES de gerar as opções de lista
+            # Isso garante que se filtrar "Com Site", só aparecem cidades que têm empresas com site.
+            
+            df_step1 = df_raw.copy()
+
+            # Aplica Site
+            if filtro_site == "Sim": df_step1 = df_step1[df_step1['site'].notnull()]
+            elif filtro_site == "Não": df_step1 = df_step1[df_step1['site'].isnull()]
+
+            # Aplica Telefone
+            if filtro_tel == "Celular": df_step1 = df_step1[df_step1['tipo_contato'] == 'Celular']
+            elif filtro_tel == "Fixo": df_step1 = df_step1[df_step1['tipo_contato'] == 'Fixo']
+
+            # Aplica Notas e Avaliações
+            df_step1['nota'] = pd.to_numeric(df_step1['nota'], errors='coerce').fillna(0)
+            df_step1 = df_step1[(df_step1['nota'] >= nota_range[0]) & (df_step1['nota'] <= nota_range[1])]
+            
+            df_step1['avaliacoes'] = pd.to_numeric(df_step1['avaliacoes'], errors='coerce').fillna(0)
+            min_aval, max_aval = avaliacoes_range
+            if max_aval < 5000:
+                df_step1 = df_step1[(df_step1['avaliacoes'] >= min_aval) & (df_step1['avaliacoes'] <= max_aval)]
+            else:
+                df_step1 = df_step1[df_step1['avaliacoes'] >= min_aval]
+
+            # --- 2. ABAS DE SELEÇÃO (POPULADAS COM DADOS FILTRADOS) ---
             t1, t2 = st.tabs(["🎯 Segmentação (Obrigatório)", "📍 Localização (Opcional)"])
 
-            # Variáveis de seleção
             f_macro, f_google, f_uf, f_cidade, f_bairro = [], [], [], [], []
 
             with t1:
-                # --- [ALTERAÇÃO 2] MELHORIA NA HIERARQUIA DAS CATEGORIAS ---
                 st.caption("Siga a ordem: Primeiro escolha o setor geral, depois refine a atividade específica.")
                 
                 col_a, col_b = st.columns(2)
                 with col_a:
-                    # Título para guiar
                     st.markdown("##### 1️⃣ Escolha o Grande Setor")
-                    opts_macro = sorted(df_options['Segmento'].dropna().unique().astype(str).tolist())
+                    # Popula usando df_step1 (já filtrado tecnicamente)
+                    opts_macro = sorted(df_step1['Segmento'].dropna().unique().astype(str).tolist())
                     f_macro = st.multiselect(
                         "Categoria Geral", 
                         opts_macro, 
-                        placeholder="Ex: Saúde, Alimentação, Construção...",
+                        placeholder="Ex: Saúde, Alimentação...",
                         help="Agrupamento amplo das empresas."
                     )
                 
                 with col_b:
-                    # Filtro cascata
+                    # Filtra nichos baseado no Macro selecionado
                     if f_macro: 
-                        df_nicho_opts = df_options[df_options['Segmento'].isin(f_macro)]
+                        df_nicho_opts = df_step1[df_step1['Segmento'].isin(f_macro)]
                     else: 
-                        df_nicho_opts = df_options
+                        df_nicho_opts = df_step1
                     
                     st.markdown("##### 2️⃣ Escolha a Especialidade")
                     opts_nicho = sorted(df_nicho_opts['categoria_google'].dropna().unique().astype(str).tolist())
                     f_google = st.multiselect(
                         "Atividade Específica (Google)", 
                         opts_nicho, 
-                        placeholder="Ex: Cardiologista, Pizzaria, Marceneiro...",
+                        placeholder="Ex: Cardiologista, Pizzaria...",
                         help="A categoria exata cadastrada no Google Maps."
                     )
 
-            # Atualiza o DF de Opções com o que foi selecionado na Aba 1
-            df_loc_opts = df_options.copy()
-            if f_macro: df_loc_opts = df_loc_opts[df_loc_opts['Segmento'].isin(f_macro)]
-            if f_google: df_loc_opts = df_loc_opts[df_loc_opts['categoria_google'].isin(f_google)]
+            # --- PREPARA STEP 2 (DADOS PARA LOCALIZAÇÃO) ---
+            # Agora filtramos pelos segmentos escolhidos para limpar as cidades
+            df_step2 = df_step1.copy()
+            if f_macro: df_step2 = df_step2[df_step2['Segmento'].isin(f_macro)]
+            if f_google: df_step2 = df_step2[df_step2['categoria_google'].isin(f_google)]
 
             with t2:
                 col_d, col_e, col_f = st.columns(3)
                 
                 with col_d:
-                    opts_uf = sorted(df_loc_opts['estado'].dropna().unique().astype(str).tolist())
+                    # Popula UF usando df_step2 (filtrado por técnico + segmento)
+                    opts_uf = sorted(df_step2['estado'].dropna().unique().astype(str).tolist())
                     f_uf = st.multiselect("Estado (UF)", opts_uf, placeholder="Selecione...")
                 
                 with col_e:
                     if f_uf: 
-                        df_cid_opts = df_loc_opts[df_loc_opts['estado'].isin(f_uf)]
+                        df_cid_opts = df_step2[df_step2['estado'].isin(f_uf)]
                     else: 
-                        df_cid_opts = df_loc_opts
+                        df_cid_opts = df_step2
                     
                     opts_cidade = sorted(df_cid_opts['cidade'].dropna().unique().astype(str).tolist())
                     f_cidade = st.multiselect("Cidade", opts_cidade, placeholder="Ex: Campinas...")
@@ -359,6 +381,18 @@ else:
                     
                     opts_bairro = sorted(df_bai_opts['bairro'].dropna().unique().astype(str).tolist())
                     f_bairro = st.multiselect("Bairro", opts_bairro, placeholder="Selecione...")
+
+        # --- APLICAÇÃO DOS FILTROS FINAIS (CONSOLIDAÇÃO) ---
+        # Aqui pegamos o df_step2 (que já tem quase tudo) e aplicamos só a localização final
+        df_f = df_step2.copy()
+
+        if f_uf: df_f = df_f[df_f['estado'].isin(f_uf)]
+        if f_cidade: df_f = df_f[df_f['cidade'].isin(f_cidade)]
+        if f_bairro: df_f = df_f[df_f['bairro'].isin(f_bairro)]
+
+        # Lógica para mostrar o botão de ação
+        filtro_aval_ativo = (avaliacoes_range[0] > 0) or (avaliacoes_range[1] < 5000)
+        filtros_ativos = any([f_macro, f_google, f_uf, f_cidade, f_bairro, filtro_aval_ativo])
 
         # --- APLICAÇÃO DOS FILTROS FINAIS ---
         df_f = df_raw.copy()
