@@ -20,7 +20,7 @@ st.markdown("""
 
     /* CENTRALIZA E LIMITA A LARGURA EM MONITORES GRANDES */
     .main .block-container {
-        max-width: 1000px;
+        max-width: 960px;
         padding-top: 3rem;
         margin: auto;
     }
