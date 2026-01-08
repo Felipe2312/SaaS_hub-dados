@@ -17,6 +17,13 @@ st.set_page_config(page_title="DiskLeads", layout="wide", page_icon="🚀")
 st.markdown("""
 <style>
     .stDeployButton {display:none;}
+
+    /* CENTRALIZA E LIMITA A LARGURA EM MONITORES GRANDES */
+    .main .block-container {
+        max-width: 1100px;
+        padding-top: 3rem;
+        margin: auto;
+    }
     
     /* Tooltip do WhatsApp Flutuante */
     .float:hover:after {
