@@ -501,31 +501,61 @@ else:
                         with ce_a: email_input = st.text_input("Seu E-mail", placeholder="ex: joao@gmail.com")
                         with ce_b: email_confirm = st.text_input("Confirme E-mail", placeholder="Repita o e-mail")
                         
-                        # --- [NOVO] AVISO DISCRETO DE E-MAIL ---
+                        # AVISO DISCRETO DE E-MAIL
                         if email_input and email_confirm and (email_input != email_confirm):
                             st.markdown(f"<span style='color:#e74c3c; font-size:12px; margin-top:-15px; display:block;'>❌ Os e-mails não coincidem. Verifique a digitação.</span>", unsafe_allow_html=True)
                     
                     with c2:
                         cupom_input = st.text_input("Cupom de Desconto", placeholder="Código").upper().strip()
 
-                    # --- LÓGICA DO DESCONTO ---
+                    # --- 🚀 NOVA LÓGICA DE CUPOM (VIA BANCO DE DADOS/VIEW) ---
                     fator_desconto = 0.0
+                    abatimento_fixo = 0.0
                     msg_cupom = None
+                    cupom_salvar = None  # Variável para salvar no banco depois
 
-                    if cupom_input == "FOUNDER50":
-                        fator_desconto = 0.50
-                        msg_cupom = "✅ Cupom FOUNDER50 aplicado!"
-                    elif cupom_input == "INSTA15":
-                        fator_desconto = 0.15
-                        msg_cupom = "✅ Cupom INSTA15 aplicado!"
-                    elif cupom_input == "FACE15":
-                        fator_desconto = 0.15
-                        msg_cupom = "✅ Cupom FACE15 aplicado!"
-                    elif cupom_input:
-                        msg_cupom = "❌ Cupom inválido."
+                    if cupom_input:
+                        try:
+                            # Busca na VIEW 'cupons_validos' (que já filtra data e estoque)
+                            res_c = supabase.table("cupons_validos").select("*").eq("codigo", cupom_input).execute()
+                            
+                            if res_c.data:
+                                # Se retornou, é válido!
+                                c_info = res_c.data[0]
+                                cupom_salvar = cupom_input # Confirma cupom válido
+                                
+                                # 1. Pega abatimento de sinal (se houver)
+                                abatimento_fixo = float(c_info['valor_abatimento_sinal'] or 0)
+                                
+                                # 2. Calcula desconto principal
+                                if c_info['tipo_desconto'] == 'porcentagem':
+                                    fator_desconto = float(c_info['valor_desconto']) / 100
+                                    display_msg = f"{int(c_info['valor_desconto'])}% OFF"
+                                else:
+                                    # Se for desconto fixo em R$
+                                    desconto_reais = float(c_info['valor_desconto'])
+                                    fator_desconto = desconto_reais / valor_total if valor_total > 0 else 0
+                                    display_msg = f"{fmt_real(desconto_reais)} OFF"
 
-                    # Cálculo final
-                    valor_final_pagar = valor_total * (1 - fator_desconto)
+                                msg_cupom = f"✅ Cupom {cupom_input} aplicado ({display_msg})!"
+                                
+                                if abatimento_fixo > 0:
+                                    msg_cupom += f" + {fmt_real(abatimento_fixo)} de sinal abatido."
+                            
+                            else:
+                                msg_cupom = "❌ Cupom inválido, expirado ou esgotado."
+
+                        except Exception as e:
+                            print(f"Erro validação: {e}") 
+                            msg_cupom = "❌ Erro ao validar cupom."
+
+                    # --- CÁLCULO FINAL MATEMÁTICO ---
+                    # Primeiro aplica a % (Founder), depois subtrai o sinal (Abatimento)
+                    valor_final_pagar = (valor_total * (1 - fator_desconto)) - abatimento_fixo
+
+                    # Trava de segurança para não dar valor negativo
+                    if valor_final_pagar < 0: valor_final_pagar = 0.0
+
                     economia = valor_total - valor_final_pagar
 
                     st.divider()
@@ -535,16 +565,16 @@ else:
                     
                     with cp1:
                         # Feedback do Cupom
-                        if fator_desconto > 0:
+                        if cupom_salvar: # Se validou com sucesso
                             st.success(msg_cupom)
                         elif cupom_input:
-                            st.caption(f"❌ O cupom **{cupom_input}** não é válido.") # Mudei de st.error para st.caption para ser mais discreto aqui também
+                            st.caption(msg_cupom or f"❌ O cupom **{cupom_input}** não é válido.") 
                         else:
                             st.caption("Confira seus dados antes de pagar.")
 
                     with cp2:
                         # O componente st.metric é o mais bonito e limpo para preços
-                        if fator_desconto > 0:
+                        if economia > 0:
                             st.metric(
                                 label="Valor Final", 
                                 value=fmt_real(valor_final_pagar), 
@@ -559,8 +589,6 @@ else:
 
                     # --- BOTÃO DE PAGAMENTO ---
                     st.write("") # Espaçinho
-                    
-                    # (Removi o st.warning antigo daqui)
                     
                     pode_prosseguir = (email_input == email_confirm) and ("@" in email_input)
                     
@@ -578,9 +606,6 @@ else:
                         
                         resumo_filtros_str = " | ".join(lista_filtros) if lista_filtros else "Todos os dados"
                         
-                        # Definindo qual cupom será salvo (apenas se for válido)
-                        cupom_salvar = cupom_input if fator_desconto > 0 else None
-
                         # Geração Excel (Mantido Igual)
                         df_final = pd.DataFrame()
                         df_final['Empresa'] = df_f['nome']
@@ -621,14 +646,18 @@ else:
                             "email_cliente": email_input,
                             "url_arquivo": url_publica,
                             "detalhes_filtro": resumo_filtros_str,
-                            "cupom": cupom_salvar
+                            "cupom": cupom_salvar # Salva o cupom validado
                         }
                         
                         supabase.table("vendas").upsert(dados_venda).execute()
 
                         # Checkout Mercado Pago
+                        # IMPORTANTE: Se o valor for 0 (100% off), precisamos tratar para não quebrar o MP
+                        preco_mp = float(valor_final_pagar)
+                        if preco_mp < 0.1: preco_mp = 0.1 # MP exige min de alguns centavos, ou você libera direto sem API
+
                         pref_data = {
-                            "items": [{"title": f"Base {total_leads} Leads - {NOME_MARCA}", "quantity": 1, "unit_price": float(valor_final_pagar), "currency_id": "BRL"}],
+                            "items": [{"title": f"Base {total_leads} Leads - {NOME_MARCA}", "quantity": 1, "unit_price": preco_mp, "currency_id": "BRL"}],
                             "external_reference": st.session_state.ref_venda,
                             "back_urls": {"success": "https://leads-brasil.streamlit.app/"},
                             "auto_return": "approved",
@@ -654,20 +683,16 @@ else:
                                 
                                 if check.data and check.data[0]['status'] == 'pago':
                                     status.update(label="✅ Pagamento Confirmado!", state="complete")
-                                    st.rerun() # Recarrega a página para mostrar o download
+                                    st.rerun() 
                             
-                            # Se o loop acabar e não pagou, avisa
                             status.update(label="⏳ Tempo de verificação automática esgotado.", state="error")
                             st.write("Não identificamos o pagamento nos últimos 3 minutos.")
                         
-                        # --- [NOVO] BOTÃO DE CHECAGEM MANUAL ---
                         st.write("")
                         st.markdown("##### Já realizou o pix e não liberou?")
                         if st.button("🔄 CLIQUE AQUI PARA ATUALIZAR STATUS"):
-                             # Ao clicar, o Streamlit roda o script todo de novo.
-                             # Como o check de 'is_pago' está lá no topo do código,
-                             # ele vai bater no banco, ver que tá pago e mostrar a tela de sucesso.
-                             st.rerun()
+                                st.rerun()
+
             st.divider()
             st.subheader("📋 Amostra dos Dados (Top 5)")
             
@@ -781,3 +806,69 @@ with col_f2:
 #         )
 #     else:
 #         st.sidebar.info("Selecione um filtro com resultados para testar o Excel.")
+
+# ==========================================
+# 🔐 PAINEL ADMINISTRATIVO: GESTÃO DE CUPONS
+# ==========================================
+st.sidebar.divider()
+if st.sidebar.checkbox("🔑 Painel Admin: Cupons"):
+    # Senha simples para acesso local
+    senha_admin = st.sidebar.text_input("Senha de Acesso", type="password")
+    
+    # Substitua 'admin123' pela sua senha de preferência
+    if senha_admin == "admin123":
+        st.sidebar.success("Acesso Liberado")
+        
+        with st.expander("🆕 Criar Novo Cupom", expanded=True):
+            with st.form("form_criacao_cupom"):
+                st.markdown("### Configurar Cupom")
+                c1, c2 = st.columns(2)
+                
+                with c1:
+                    novo_codigo = st.text_input("Código do Cupom", placeholder="EX: FOUNDER50").upper().strip()
+                    tipo_desc = st.selectbox("Tipo de Desconto", ["porcentagem", "fixo"])
+                    valor_desc = st.number_input("Valor do Desconto (R$ ou %)", min_value=0.0, step=1.0)
+                
+                with c2:
+                    abatimento_sinal = st.number_input("Abatimento de Sinal (R$)", min_value=0.0, step=1.0, help="Valor fixo pago via PIX/Encomenda")
+                    uso_max = st.number_input("Qtd Máxima de Usos", min_value=1, value=1, step=1)
+                    expiracao = st.date_input("Data de Expiração", value=None)
+
+                btn_gerar = st.form_submit_button("🚀 SALVAR NO BANCO", use_container_width=True)
+
+                if btn_gerar:
+                    if not novo_codigo:
+                        st.error("O código do cupom não pode ser vazio.")
+                    else:
+                        dados_cupom = {
+                            "codigo": novo_codigo,
+                            "tipo_desconto": tipo_desc,
+                            "valor_desconto": valor_desc,
+                            "valor_abatimento_sinal": abatimento_sinal,
+                            "uso_maximo": uso_max,
+                            "uso_atual": 0,
+                            "ativo": True,
+                            "data_expiracao": expiracao.isoformat() if expiracao else None
+                        }
+                        
+                        try:
+                            res_cupom = supabase.table("cupons").insert(dados_cupom).execute()
+                            if res_cupom.data:
+                                st.success(f"Cupom **{novo_codigo}** criado com sucesso!")
+                        except Exception as e:
+                            st.error(f"Erro ao salvar cupom: {e}")
+
+        # --- LISTAR CUPONS EXISTENTES ---
+        if st.button("🔄 Listar Cupons"):
+            try:
+                lista_cupons = supabase.table("cupons").select("*").order("created_at", desc=True).execute()
+                if lista_cupons.data:
+                    df_cupons = pd.DataFrame(lista_cupons.data)
+                    st.dataframe(df_cupons, use_container_width=True)
+                else:
+                    st.info("Nenhum cupom encontrado.")
+            except Exception as e:
+                st.error(f"Erro ao listar: {e}")
+    else:
+        if senha_admin:
+            st.sidebar.error("Senha incorreta")
