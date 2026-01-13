@@ -48,6 +48,7 @@ st.markdown("""
         border-radius: 10px;
         border-left: 5px solid #2E66F1;
         margin-bottom: 20px;
+        margin-top: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -115,7 +116,6 @@ def fmt_real(valor):
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 def gerar_link_wa(row):
-    # Só gera link se for Celular. Se for fixo, retorna None
     if str(row['tipo_contato']) == "Celular":
         nums = "".join(filter(str.isdigit, str(row['telefone'])))
         return f"https://wa.me/55{nums}"
@@ -172,11 +172,11 @@ def render_encomenda_banner():
     with st.container(border=True):
         c_txt, c_btn = st.columns([3, 1])
         with c_txt:
-            st.markdown("##### 🕵️ Não encontrou o nicho ou cidade exata?")
-            st.caption("Encomende uma **Varredura Sob Medida**. Como vamos extrair agora para você, sai **25% mais barato** que a tabela do site pela espera.")
+            st.markdown("##### 🕵️ Procurando algo específico?")
+            st.caption("Se achou poucos resultados ou quer uma cidade que não está aqui, encomende uma **Varredura Sob Medida**.")
         with c_btn:
-            msg_banner = "Olá, não encontrei o filtro exato no site e gostaria de encomendar uma varredura personalizada com o desconto de 25%."
-            st.link_button("Encomendar c/ Desconto", f"https://wa.me/5511963048466?text={msg_banner.replace(' ', '%20')}", use_container_width=True)
+            msg_banner = "Olá, fiz uma busca no site mas gostaria de encomendar uma lista específica (Varredura Personalizada)."
+            st.link_button("Encomendar Lista", f"https://wa.me/5511963048466?text={msg_banner.replace(' ', '%20')}", use_container_width=True)
 
 # ==============================================================
 # 🚀 DATA LOADER
@@ -191,12 +191,31 @@ def get_local_data():
         df = pd.read_parquet(CACHE_FILE)
         if 'segmento' in df.columns:
             df.rename(columns={'segmento': 'Segmento'}, inplace=True)
+        
+        # Tratamento de Data
         if 'data_extracao' in df.columns:
             if not pd.api.types.is_datetime64_any_dtype(df['data_extracao']):
                 df['data_extracao'] = pd.to_datetime(df['data_extracao'], errors='coerce')
             df['data_fmt'] = df['data_extracao'].dt.strftime('%d/%m/%Y').fillna(datetime.today().strftime('%d/%m/%Y'))
         else:
             df['data_fmt'] = datetime.today().strftime('%d/%m/%Y')
+            
+        # --- ORDENAÇÃO FIXA (CRUCIAL PARA O SLIDER DE INTERVALO) ---
+        # Ordena por Data (mais recentes primeiro) e Nome (para desempatar e manter a ordem fixa)
+        cols_ordenacao = []
+        asc_ordenacao = []
+        
+        if 'data_extracao' in df.columns:
+            cols_ordenacao.append('data_extracao')
+            asc_ordenacao.append(False) # Recentes primeiro
+            
+        if 'nome' in df.columns:
+            cols_ordenacao.append('nome')
+            asc_ordenacao.append(True) # A-Z para desempate
+            
+        if cols_ordenacao:
+            df = df.sort_values(by=cols_ordenacao, ascending=asc_ordenacao)
+            
         return df
     except Exception as e:
         return pd.DataFrame()
@@ -209,10 +228,9 @@ if 'ref_venda' not in st.session_state:
     st.session_state.ref_venda = f"REF_{int(time.time())}"
 
 if 'mostrar_checkout' not in st.session_state:
-    st.session_state.mostrar_checkout = False # Controla se mostra o PREÇO
+    st.session_state.mostrar_checkout = False 
 
 check_banco = supabase.table("vendas").select("*").eq("external_reference", st.session_state.ref_venda).execute()
-# Variável que controla a liberação dos dados
 is_pago = check_banco.data and check_banco.data[0]['status'] == 'pago'
 
 st.title(f"🚀 {NOME_MARCA}")
@@ -265,7 +283,6 @@ else:
         with st.container(border=True):
             st.subheader("🛠️ Configure sua Lista")
             
-            # Filtros Técnicos
             c2, c3, c4, c5 = st.columns([1.5, 1.5, 1, 1])
             with c2: nota_range = st.select_slider("⭐ Nota Mínima", options=[i/10 for i in range(0, 51)], value=(0.0, 5.0))
             with c3: avaliacoes_range = st.slider("🗣️ Qtd. Avaliações", 0, 5000, (0, 5000), step=10)
@@ -274,7 +291,6 @@ else:
 
             st.divider()
 
-            # Prepara Cascata
             df_step1 = df_raw.copy()
             if filtro_site == "Sim": df_step1 = df_step1[df_step1['site'].notnull()]
             elif filtro_site == "Não": df_step1 = df_step1[df_step1['site'].isnull()]
@@ -286,10 +302,9 @@ else:
             
             df_step1['avaliacoes'] = pd.to_numeric(df_step1['avaliacoes'], errors='coerce').fillna(0)
             min_aval, max_aval = avaliacoes_range
-            if max_aval == 5000: df_step1 = df_step1[(df_step1['avaliacoes'] >= min_aval) & (df_step1['avaliacoes'] <= max_aval)]
+            if max_aval < 5000: df_step1 = df_step1[(df_step1['avaliacoes'] >= min_aval) & (df_step1['avaliacoes'] <= max_aval)]
             else: df_step1 = df_step1[df_step1['avaliacoes'] >= min_aval]
 
-            # Abas de Seleção
             t1, t2 = st.tabs(["🎯 Segmentação (Obrigatório)", "📍 Localização (Opcional)"])
             f_macro, f_google, f_uf, f_cidade, f_bairro = [], [], [], [], []
 
@@ -364,6 +379,7 @@ else:
 
             if total_leads == 0:
                 st.info("🔍 Nenhum resultado encontrado para essa combinação específica.")
+                # Banner aparece quando não tem leads
                 render_encomenda_banner()
 
             else:
@@ -371,7 +387,6 @@ else:
                 # 🔥 TABELA PREMIUM + PAYWALL
                 # =========================================================
                 
-                # 1. Título e Dica Útil (CONDICIONAL)
                 c_title, c_tip = st.columns([1.5, 1])
                 with c_title:
                     st.markdown(f"### ✅ Encontramos **{total_leads} Leads**")
@@ -379,41 +394,30 @@ else:
                     if filtro_tel != "Celular":
                         st.info("💡 **Dica:** Quer apenas contatos com WhatsApp? Suba e mude o filtro de Telefone para **'Celular'**.")
 
-                # ---------------------------------------------------------
-                # PREPARAÇÃO DOS DADOS
-                # ---------------------------------------------------------
-                
+                # Preparação dos dados
                 def fmt_endereco(row):
                     end = str(row['endereco_completo']).split(',')[0] 
                     bairro = str(row['bairro'])
                     if bairro and bairro != 'nan': return f"{end} - {bairro}"
                     return end
 
-                # ---------------------------------------------------------
-                # PARTE A: OS 10 PRIMEIROS (GRÁTIS)
-                # ---------------------------------------------------------
+                # Parte A: Leads Grátis
                 df_view = df_f.head(10).copy()
                 df_view['Empresa'] = df_view['nome'] 
                 df_view['Telefone'] = df_view['telefone']
-                df_view['WhatsApp'] = df_view.apply(gerar_link_wa, axis=1) # Link real
+                df_view['WhatsApp'] = df_view.apply(gerar_link_wa, axis=1)
                 df_view['Endereço'] = df_view.apply(fmt_endereco, axis=1)
                 df_view['Cidade'] = df_view['cidade'].astype(str) + "-" + df_view['estado'].astype(str)
                 df_view['Nota'] = df_view['nota']
                 df_view['Atualizado'] = df_view['data_fmt']
 
-                # ---------------------------------------------------------
-                # PARTE B: BLOQUEADOS (AMOSTRA DE 5 APENAS)
-                # ---------------------------------------------------------
-                
+                # Parte B: Bloqueados
                 if not is_pago:
-                    # Pega do 11º em diante, mas mostra SÓ MAIS 5 para não poluir
                     df_locked = df_f.iloc[10:].head(5).copy()
                     
                     if not df_locked.empty:
                         df_locked['Empresa'] = df_locked['nome'] 
                         df_locked['Telefone'] = df_locked['telefone'].apply(mascarar_telefone)
-                        
-                        # BLOQUEIO: None faz o botão sumir (o cadeado fica no telefone)
                         df_locked['WhatsApp'] = None 
                         
                         def mascara_end_row(row):
@@ -430,7 +434,6 @@ else:
                         df_final_show = df_view
                 
                 else:
-                    # Se PAGOU, libera tudo (Top 100 para performance)
                     df_full = df_f.head(100).copy()
                     df_full['Empresa'] = df_full['nome']
                     df_full['Telefone'] = df_full['telefone']
@@ -443,8 +446,7 @@ else:
 
                 df_final_show = df_final_show[['Empresa', 'Telefone', 'WhatsApp', 'Endereço', 'Cidade', 'Nota', 'Atualizado']]
 
-                # 4. RENDERIZA A TABELA NATIVA (Com Altura Dinâmica Corrigida)
-                # Calcula altura: 35px por linha + cabeçalho. Trava em 500px.
+                # Renderiza Tabela
                 qtd_linhas = len(df_final_show)
                 altura_calc = (qtd_linhas + 1) * 35 
                 altura_final = 500 if altura_calc > 500 else int(altura_calc)
@@ -457,19 +459,10 @@ else:
                     column_config={
                         "Empresa": st.column_config.TextColumn("Empresa", width="medium"),
                         "Telefone": st.column_config.TextColumn("Telefone", width="small"),
-                        "WhatsApp": st.column_config.LinkColumn(
-                            "Ação",
-                            display_text="📲 Chamar", 
-                            validate="^https://",
-                            width="small"
-                        ),
+                        "WhatsApp": st.column_config.LinkColumn("Ação", display_text="📲 Chamar", validate="^https://", width="small"),
                         "Endereço": st.column_config.TextColumn("Endereço Completo", width="medium"),
                         "Cidade": st.column_config.TextColumn("Cidade", width="small"),
-                        "Nota": st.column_config.NumberColumn(
-                            "Nota",
-                            format="%.1f ⭐",
-                            width="small"
-                        ),
+                        "Nota": st.column_config.NumberColumn("Nota", format="%.1f ⭐", width="small"),
                         "Atualizado": st.column_config.TextColumn("Atualização", width="small")
                     }
                 )
@@ -478,7 +471,6 @@ else:
                 # 🔓 BOTÃO DE DESBLOQUEIO E CHECKOUT
                 # =========================================================
                 
-                # Se ainda não clicou para ver preço (e não pagou):
                 if not st.session_state.mostrar_checkout and not is_pago:
                     c_action1, c_action2, c_action3 = st.columns([1, 2, 1])
                     with c_action2:
@@ -487,24 +479,48 @@ else:
                             st.session_state.mostrar_checkout = True
                             st.rerun()
                 
-                # Se clicou para ver preço (ou já pagou e estamos mostrando o botão de sucesso):
                 elif st.session_state.mostrar_checkout and not is_pago:
                     st.divider()
                     st.markdown("### 💰 Finalizar Pedido")
                     
-                    resumo_preco = calcular_preco_final(total_leads)
+                    # --- NOVO: SLIDER DE INTERVALO (A SOLUÇÃO GENIAL) ---
+                    start_idx, end_idx = 0, total_leads
+                    qtd_selecionada = total_leads
+                    
+                    if total_leads > 50:
+                        with st.container(border=True):
+                            st.markdown("##### 💸 O preço ficou alto? Ajuste para o seu bolso.")
+                            st.caption("Não precisa comprar tudo de uma vez. Reduza a quantidade abaixo até o valor ficar confortável para você.")
+                            
+                            faixa_escolhida = st.slider(
+                                "Intervalo de Leads", 
+                                min_value=0, 
+                                max_value=total_leads, 
+                                value=(0, total_leads),
+                                step=10,
+                                help="Use as duas bolinhas para escolher o início e o fim da sua lista."
+                            )
+                            
+                            start_idx, end_idx = faixa_escolhida
+                            qtd_selecionada = end_idx - start_idx
+                            
+                            if qtd_selecionada <= 0:
+                                st.warning("⚠️ Selecione pelo menos 1 lead.")
+                                st.stop()
+                                
+                            if start_idx > 0:
+                                st.info(f"⏭️ Pulando os primeiros **{start_idx}** leads. Você vai levar do nº {start_idx+1} ao {end_idx}.")
+
+                    resumo_preco = calcular_preco_final(qtd_selecionada)
                     valor_total = round(resumo_preco['total'], 2)
 
                     with st.container(border=True):
                         c1, c2, c3 = st.columns([1, 1, 1.3])
-                        with c1: st.metric("Total de Leads", f"{total_leads}")
+                        with c1: st.metric("Qtd. Selecionada", f"{qtd_selecionada}")
                         with c2: st.metric("Preço por Lead", fmt_real(resumo_preco['unitario_medio']))
                         with c3:
                             if resumo_preco['pct_off'] > 0:
-                                st.markdown(f"""
-                                    <p style='margin-bottom: -5px; color: #888; font-size: 14px;'><s>{fmt_real(resumo_preco['total_ancora'])}</s></p>
-                                    <h2 style='color: #2ecc71; margin-top: 0px;'>{fmt_real(valor_total)}</h2>
-                                """, unsafe_allow_html=True)
+                                st.markdown(f"<p style='margin-bottom: -5px; color: #888; font-size: 14px;'><s>{fmt_real(resumo_preco['total_ancora'])}</s></p><h2 style='color: #2ecc71; margin-top: 0px;'>{fmt_real(valor_total)}</h2>", unsafe_allow_html=True)
                                 st.caption(f"Economia de {resumo_preco['pct_off']}% aplicada.")
                             else:
                                 st.metric("Valor Total", fmt_real(valor_total))
@@ -512,7 +528,6 @@ else:
                         st.subheader("📬 Dados para Recebimento")
                         c_mail1, c_mail2 = st.columns([2, 1])
                         with c_mail1:
-                            # CORREÇÃO: Removemos a confirmação de email
                             email_input = st.text_input("Seu E-mail", placeholder="ex: joao@gmail.com")
                         
                         with c_mail2:
@@ -545,41 +560,46 @@ else:
                         if valor_final_pagar < 0: valor_final_pagar = 0.0
                         if msg_cupom: st.info(msg_cupom)
 
-                        # Validação simplificada: só precisa ter @
-                        pode_prosseguir = email_input and ("@" in email_input)
+                        pode_prosseguir = email_input and ("@" in email_input) and (qtd_selecionada > 0)
                         
                         st.write("")
                         if st.button(f"💳 PAGAR {fmt_real(valor_final_pagar)} E BAIXAR", type="primary", use_container_width=True, disabled=not pode_prosseguir):
                             
-                            # --- PREPARAÇÃO DOS DADOS (EXCEL RICO RESTAURADO) ---
+                            # --- ✂️ CORTE MÁGICO DO INTERVALO ---
+                            df_f_cut = df_f.iloc[start_idx:end_idx].copy() 
+                            
+                            # --- PREPARAÇÃO DOS DADOS ---
                             lista_filtros = []
                             if f_macro: lista_filtros.append(f"Setor: {', '.join(f_macro)}")
                             if f_cidade: lista_filtros.append(f"Cidade: {', '.join(f_cidade)}")
+                            if qtd_selecionada < total_leads: 
+                                lista_filtros.append(f"Intervalo: {start_idx} a {end_idx} (Total {total_leads})")
+                            
                             resumo_filtros_str = " | ".join(lista_filtros) if lista_filtros else "Filtros Personalizados"
 
-                            # GERAÇÃO DO EXCEL COMPLETO (Premium)
+                            # EXCEL COMPLETO (df_f_cut)
                             df_final = pd.DataFrame()
-                            df_final['Empresa'] = df_f['nome']
-                            df_final['Tipo de Telefone'] = df_f['tipo_contato']
-                            df_final['Telefone'] = df_f['telefone']
-                            df_final['Link WhatsApp'] = df_f.apply(gerar_link_wa, axis=1)
-                            df_final['Atualizado em'] = df_f['data_fmt']
-                            df_final['Setor Principal'] = df_f['Segmento']
-                            df_final['Nicho Específico'] = df_f['categoria_google']
-                            df_final['Nota Google'] = df_f['nota']
-                            df_final['Qtd Avaliações'] = df_f['avaliacoes']
-                            df_final['Endereço Completo'] = df_f['endereco_completo']
-                            df_final['Bairro'] = df_f['bairro']
-                            df_final['Cidade'] = df_f['cidade']
-                            df_final['UF'] = df_f['estado']
-                            df_final['Site'] = df_f['site']
+                            df_final['Empresa'] = df_f_cut['nome']
+                            df_final['Tipo de Telefone'] = df_f_cut['tipo_contato']
+                            df_final['Telefone'] = df_f_cut['telefone']
+                            df_final['Link WhatsApp'] = df_f_cut.apply(gerar_link_wa, axis=1)
+                            df_final['Atualizado em'] = df_f_cut['data_fmt']
+                            df_final['Setor Principal'] = df_f_cut['Segmento']
+                            df_final['Nicho Específico'] = df_f_cut['categoria_google']
+                            df_final['Nota Google'] = df_f_cut['nota']
+                            df_final['Qtd Avaliações'] = df_f_cut['avaliacoes']
+                            df_final['Endereço Completo'] = df_f_cut['endereco_completo']
+                            df_final['Bairro'] = df_f_cut['bairro']
+                            df_final['Cidade'] = df_f_cut['cidade']
+                            df_final['UF'] = df_f_cut['estado']
+                            df_final['Site'] = df_f_cut['site']
                             
                             output_file = io.BytesIO()
                             with pd.ExcelWriter(output_file, engine='xlsxwriter') as writer:
                                 df_final.to_excel(writer, index=False, sheet_name='Leads')
                                 worksheet = writer.sheets['Leads']
-                                worksheet.set_column('A:A', 30) # Empresa
-                                worksheet.set_column('D:D', 25) # Link Zap
+                                worksheet.set_column('A:A', 30)
+                                worksheet.set_column('D:D', 25)
                             
                             nome_arquivo = f"{st.session_state.ref_venda}.xlsx"
                             supabase.storage.from_('leads_pedidos').upload(
@@ -598,7 +618,6 @@ else:
                                 "detalhes_filtro": resumo_filtros_str,
                                 "cupom": cupom_salvar
                             }
-                            # CORREÇÃO CRÍTICA: on_conflict para evitar erro de duplicação
                             supabase.table("vendas").upsert(dados_venda, on_conflict="external_reference").execute()
 
                             # Mercado Pago
@@ -606,7 +625,7 @@ else:
                             if preco_mp < 0.1: preco_mp = 0.1
                             
                             pref_data = {
-                                "items": [{"title": f"Base {total_leads} Leads - {NOME_MARCA}", "quantity": 1, "unit_price": preco_mp, "currency_id": "BRL"}],
+                                "items": [{"title": f"Pack {qtd_selecionada} Leads - {NOME_MARCA}", "quantity": 1, "unit_price": preco_mp, "currency_id": "BRL"}],
                                 "external_reference": st.session_state.ref_venda,
                                 "back_urls": {"success": "https://leads-brasil.streamlit.app/"},
                                 "auto_return": "approved"
@@ -633,6 +652,10 @@ else:
                          
                          if st.button("Já paguei (Atualizar)"): st.rerun()
 
+                # --- ⚠️ BANNER AGORA APARECE SEMPRE NO FIM DOS RESULTADOS ---
+                st.write("")
+                render_encomenda_banner()
+
 st.divider()
 col_f1, col_f2 = st.columns(2)
 with col_f1:
@@ -645,4 +668,3 @@ with col_f2:
     st.markdown("#### ⚖️ Termos e Privacidade")
     st.caption("© 2025 DiskLeads - Todos os direitos reservados.")
     st.caption("CNPJ: 61.957.100/0001-03")
-    
