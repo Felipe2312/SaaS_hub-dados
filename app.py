@@ -149,8 +149,9 @@ def calcular_preco_final(qtd):
             quantidade_restante = qtd - ultimo_limite
             if quantidade_restante > 0:
                 total += quantidade_restante * f["preco"]
+            # Lógica para pegar a próxima meta de preço
             if i + 1 < len(faixas):
-                prox_meta = f["limite"]
+                prox_meta = faixas[i]["limite"] # O limite atual é a meta para pular pro proximo
                 prox_preco_meta = faixas[i+1]["preco"]
             break
             
@@ -466,6 +467,11 @@ else:
                         "Atualizado": st.column_config.TextColumn("Atualização", width="small")
                     }
                 )
+                
+                # --- 1. SINALIZAÇÃO DE QUE É UMA AMOSTRA ---
+                if not is_pago:
+                    st.success("💡 **Dica:** A tabela abaixo é apenas uma amostra simplificada. A lista final desbloqueada contém colunas completas como **Endereço, Site e Nota Detalhada**.")
+
 
                 # =========================================================
                 # 🔓 BOTÃO DE DESBLOQUEIO E CHECKOUT
@@ -524,6 +530,16 @@ else:
                                 st.caption(f"Economia de {resumo_preco['pct_off']}% aplicada.")
                             else:
                                 st.metric("Valor Total", fmt_real(valor_total))
+                        
+                        # --- 2. UPSELL GAMIFICADO (A LÓGICA DE PREÇO DINÂMICO) ---
+                        prox_meta = resumo_preco.get('prox_qtd')
+                        if prox_meta:
+                            falta_para_meta = prox_meta - qtd_selecionada
+                            # Mostra se faltar pouco (ex: até 500 leads) e se for positivo
+                            if 0 < falta_para_meta <= 500:
+                                novo_preco = resumo_preco.get('prox_preco_marginal')
+                                st.info(f"📉 **Quer pagar menos?** Adicione mais **{falta_para_meta}** leads para o preço cair para **{fmt_real(novo_preco)}** por lead!")
+
 
                         st.subheader("📬 Dados para Recebimento")
                         c_mail1, c_mail2 = st.columns([2, 1])
@@ -574,7 +590,6 @@ else:
                             if f_cidade: lista_filtros.append(f"Cidade: {', '.join(f_cidade)}")
                             
                             # SIMPLIFICADO: Sempre mostra a quantidade e o intervalo
-                            # qtd_selecionada já é a subtração correta calculada antes
                             lista_filtros.append(f"Pacote: {qtd_selecionada} Leads (Índice {start_idx} a {end_idx})")
                             
                             resumo_filtros_str = " | ".join(lista_filtros) if lista_filtros else "Filtros Personalizados"
