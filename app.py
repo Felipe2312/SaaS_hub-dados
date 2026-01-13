@@ -572,8 +572,10 @@ else:
                             lista_filtros = []
                             if f_macro: lista_filtros.append(f"Setor: {', '.join(f_macro)}")
                             if f_cidade: lista_filtros.append(f"Cidade: {', '.join(f_cidade)}")
-                            if qtd_selecionada < total_leads: 
-                                lista_filtros.append(f"Intervalo: {start_idx} a {end_idx} (Total {total_leads})")
+                            
+                            # SIMPLIFICADO: Sempre mostra a quantidade e o intervalo
+                            # qtd_selecionada já é a subtração correta calculada antes
+                            lista_filtros.append(f"Pacote: {qtd_selecionada} Leads (Índice {start_idx} a {end_idx})")
                             
                             resumo_filtros_str = " | ".join(lista_filtros) if lista_filtros else "Filtros Personalizados"
 
