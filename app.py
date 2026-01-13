@@ -212,6 +212,7 @@ if 'mostrar_checkout' not in st.session_state:
     st.session_state.mostrar_checkout = False # Controla se mostra o PREÇO
 
 check_banco = supabase.table("vendas").select("*").eq("external_reference", st.session_state.ref_venda).execute()
+# Variável que controla a liberação dos dados
 is_pago = check_banco.data and check_banco.data[0]['status'] == 'pago'
 
 st.title(f"🚀 {NOME_MARCA}")
@@ -285,7 +286,7 @@ else:
             
             df_step1['avaliacoes'] = pd.to_numeric(df_step1['avaliacoes'], errors='coerce').fillna(0)
             min_aval, max_aval = avaliacoes_range
-            if max_aval < 5000: df_step1 = df_step1[(df_step1['avaliacoes'] >= min_aval) & (df_step1['avaliacoes'] <= max_aval)]
+            if max_aval == 5000: df_step1 = df_step1[(df_step1['avaliacoes'] >= min_aval) & (df_step1['avaliacoes'] <= max_aval)]
             else: df_step1 = df_step1[df_step1['avaliacoes'] >= min_aval]
 
             # Abas de Seleção
@@ -511,11 +512,8 @@ else:
                         st.subheader("📬 Dados para Recebimento")
                         c_mail1, c_mail2 = st.columns([2, 1])
                         with c_mail1:
-                            ce_a, ce_b = st.columns(2)
-                            with ce_a: email_input = st.text_input("Seu E-mail", placeholder="ex: joao@gmail.com")
-                            with ce_b: email_confirm = st.text_input("Confirme E-mail", placeholder="Repita o e-mail")
-                            if email_input and email_confirm and (email_input != email_confirm):
-                                st.error("Os e-mails não coincidem.")
+                            # CORREÇÃO: Removemos a confirmação de email
+                            email_input = st.text_input("Seu E-mail", placeholder="ex: joao@gmail.com")
                         
                         with c_mail2:
                             cupom_input = st.text_input("Cupom de Desconto", placeholder="Código").upper().strip()
@@ -547,7 +545,8 @@ else:
                         if valor_final_pagar < 0: valor_final_pagar = 0.0
                         if msg_cupom: st.info(msg_cupom)
 
-                        pode_prosseguir = (email_input == email_confirm) and ("@" in email_input)
+                        # Validação simplificada: só precisa ter @
+                        pode_prosseguir = email_input and ("@" in email_input)
                         
                         st.write("")
                         if st.button(f"💳 PAGAR {fmt_real(valor_final_pagar)} E BAIXAR", type="primary", use_container_width=True, disabled=not pode_prosseguir):
