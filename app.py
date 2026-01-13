@@ -14,7 +14,7 @@ import math
 st.set_page_config(page_title="DiskLeads", layout="wide", page_icon="🚀")
 
 # CSS Ajustado
-st.markdown("""
+st.markdown("""'
 <style>
     .stDeployButton {display:none;}
 
@@ -810,65 +810,65 @@ with col_f2:
 # ==========================================
 # 🔐 PAINEL ADMINISTRATIVO: GESTÃO DE CUPONS
 # ==========================================
-st.sidebar.divider()
-if st.sidebar.checkbox("🔑 Painel Admin: Cupons"):
-    # Senha simples para acesso local
-    senha_admin = st.sidebar.text_input("Senha de Acesso", type="password")
+# st.sidebar.divider()
+# if st.sidebar.checkbox("🔑 Painel Admin: Cupons"):
+#     # Senha simples para acesso local
+#     senha_admin = st.sidebar.text_input("Senha de Acesso", type="password")
     
-    # Substitua 'admin123' pela sua senha de preferência
-    if senha_admin == "admin123":
-        st.sidebar.success("Acesso Liberado")
+#     # Substitua 'admin123' pela sua senha de preferência
+#     if senha_admin == "admin123":
+#         st.sidebar.success("Acesso Liberado")
         
-        with st.expander("🆕 Criar Novo Cupom", expanded=True):
-            with st.form("form_criacao_cupom"):
-                st.markdown("### Configurar Cupom")
-                c1, c2 = st.columns(2)
+#         with st.expander("🆕 Criar Novo Cupom", expanded=True):
+#             with st.form("form_criacao_cupom"):
+#                 st.markdown("### Configurar Cupom")
+#                 c1, c2 = st.columns(2)
                 
-                with c1:
-                    novo_codigo = st.text_input("Código do Cupom", placeholder="EX: FOUNDER50").upper().strip()
-                    tipo_desc = st.selectbox("Tipo de Desconto", ["porcentagem", "fixo"])
-                    valor_desc = st.number_input("Valor do Desconto (R$ ou %)", min_value=0.0, step=1.0)
+#                 with c1:
+#                     novo_codigo = st.text_input("Código do Cupom", placeholder="EX: FOUNDER50").upper().strip()
+#                     tipo_desc = st.selectbox("Tipo de Desconto", ["porcentagem", "fixo"])
+#                     valor_desc = st.number_input("Valor do Desconto (R$ ou %)", min_value=0.0, step=1.0)
                 
-                with c2:
-                    abatimento_sinal = st.number_input("Abatimento de Sinal (R$)", min_value=0.0, step=1.0, help="Valor fixo pago via PIX/Encomenda")
-                    uso_max = st.number_input("Qtd Máxima de Usos", min_value=1, value=1, step=1)
-                    expiracao = st.date_input("Data de Expiração", value=None)
+#                 with c2:
+#                     abatimento_sinal = st.number_input("Abatimento de Sinal (R$)", min_value=0.0, step=1.0, help="Valor fixo pago via PIX/Encomenda")
+#                     uso_max = st.number_input("Qtd Máxima de Usos", min_value=1, value=1, step=1)
+#                     expiracao = st.date_input("Data de Expiração", value=None)
 
-                btn_gerar = st.form_submit_button("🚀 SALVAR NO BANCO", use_container_width=True)
+#                 btn_gerar = st.form_submit_button("🚀 SALVAR NO BANCO", use_container_width=True)
 
-                if btn_gerar:
-                    if not novo_codigo:
-                        st.error("O código do cupom não pode ser vazio.")
-                    else:
-                        dados_cupom = {
-                            "codigo": novo_codigo,
-                            "tipo_desconto": tipo_desc,
-                            "valor_desconto": valor_desc,
-                            "valor_abatimento_sinal": abatimento_sinal,
-                            "uso_maximo": uso_max,
-                            "uso_atual": 0,
-                            "ativo": True,
-                            "data_expiracao": expiracao.isoformat() if expiracao else None
-                        }
+#                 if btn_gerar:
+#                     if not novo_codigo:
+#                         st.error("O código do cupom não pode ser vazio.")
+#                     else:
+#                         dados_cupom = {
+#                             "codigo": novo_codigo,
+#                             "tipo_desconto": tipo_desc,
+#                             "valor_desconto": valor_desc,
+#                             "valor_abatimento_sinal": abatimento_sinal,
+#                             "uso_maximo": uso_max,
+#                             "uso_atual": 0,
+#                             "ativo": True,
+#                             "data_expiracao": expiracao.isoformat() if expiracao else None
+#                         }
                         
-                        try:
-                            res_cupom = supabase.table("cupons").insert(dados_cupom).execute()
-                            if res_cupom.data:
-                                st.success(f"Cupom **{novo_codigo}** criado com sucesso!")
-                        except Exception as e:
-                            st.error(f"Erro ao salvar cupom: {e}")
+#                         try:
+#                             res_cupom = supabase.table("cupons").insert(dados_cupom).execute()
+#                             if res_cupom.data:
+#                                 st.success(f"Cupom **{novo_codigo}** criado com sucesso!")
+#                         except Exception as e:
+#                             st.error(f"Erro ao salvar cupom: {e}")
 
-        # --- LISTAR CUPONS EXISTENTES ---
-        if st.button("🔄 Listar Cupons"):
-            try:
-                lista_cupons = supabase.table("cupons").select("*").order("created_at", desc=True).execute()
-                if lista_cupons.data:
-                    df_cupons = pd.DataFrame(lista_cupons.data)
-                    st.dataframe(df_cupons, use_container_width=True)
-                else:
-                    st.info("Nenhum cupom encontrado.")
-            except Exception as e:
-                st.error(f"Erro ao listar: {e}")
-    else:
-        if senha_admin:
-            st.sidebar.error("Senha incorreta")
+#         # --- LISTAR CUPONS EXISTENTES ---
+#         if st.button("🔄 Listar Cupons"):
+#             try:
+#                 lista_cupons = supabase.table("cupons").select("*").order("created_at", desc=True).execute()
+#                 if lista_cupons.data:
+#                     df_cupons = pd.DataFrame(lista_cupons.data)
+#                     st.dataframe(df_cupons, use_container_width=True)
+#                 else:
+#                     st.info("Nenhum cupom encontrado.")
+#             except Exception as e:
+#                 st.error(f"Erro ao listar: {e}")
+#     else:
+#         if senha_admin:
+#             st.sidebar.error("Senha incorreta")
