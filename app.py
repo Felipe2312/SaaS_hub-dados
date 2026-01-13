@@ -184,7 +184,7 @@ def render_encomenda_banner():
 # ==============================================================
 CACHE_FILE = "data/leads.parquet"
 
-@st.cache_data(ttl=60, show_spinner=False)
+@st.cache_data(ttl=86400, show_spinner=False)
 def get_local_data():
     if not os.path.exists(CACHE_FILE):
         return pd.DataFrame()
@@ -467,7 +467,7 @@ else:
                         "Atualizado": st.column_config.TextColumn("Atualização", width="small")
                     }
                 )
-                
+
                 # --- 1. SINALIZAÇÃO DE QUE É UMA AMOSTRA ---
                 if not is_pago:
                     st.success("💡 **Dica:** A tabela abaixo é apenas uma amostra simplificada. A lista final desbloqueada contém colunas completas como **Endereço, Site e Nota Detalhada**.")
