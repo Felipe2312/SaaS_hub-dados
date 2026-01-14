@@ -67,7 +67,7 @@ except Exception as e:
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 SDK = mercadopago.SDK(MP_ACCESS_TOKEN)
 
-# --- 🕵️‍♂️ FUNÇÃO DE LOG (NOVIDADE) ---
+# --- 🕵️‍♂️ FUNÇÃO DE LOG ---
 def salvar_log(evento, detalhes):
     """Grava ações importantes no banco para entender o usuário."""
     try:
@@ -76,7 +76,7 @@ def salvar_log(evento, detalhes):
             "detalhes": detalhes
         }).execute()
     except:
-        pass # Se falhar o log, não trava o site
+        pass 
 
 # --- FUNÇÕES AUXILIARES ---
 def fmt_real(valor):
@@ -211,19 +211,39 @@ else:
             if max_aval < 5000: df_step1 = df_step1[(df_step1['avaliacoes'] >= min_aval) & (df_step1['avaliacoes'] <= max_aval)]
             else: df_step1 = df_step1[df_step1['avaliacoes'] >= min_aval]
 
+            # --- AQUI ESTÁ A MUDANÇA (FILTROS EM CASCATA) ---
             t1, t2 = st.tabs(["🎯 Segmentação (Obrigatório)", "📍 Localização (Opcional)"])
             f_macro, f_google, f_uf, f_cidade, f_bairro = [], [], [], [], []
 
             with t1:
                 col_a, col_b = st.columns(2)
+                
                 with col_a:
+                    st.markdown("##### 1º Passo: Escolha o Setor")
                     opts_macro = sorted(df_step1['Segmento'].dropna().unique().astype(str).tolist())
-                    f_macro = st.multiselect("Categoria Geral", opts_macro, placeholder="Ex: Saúde, Alimentação...")
+                    f_macro = st.multiselect(
+                        "Categoria Geral", 
+                        opts_macro, 
+                        placeholder="Selecione um ou mais (Ex: Alimentação)"
+                    )
+
                 with col_b:
-                    if f_macro: df_nicho_opts = df_step1[df_step1['Segmento'].isin(f_macro)]
-                    else: df_nicho_opts = df_step1
-                    opts_nicho = sorted(df_nicho_opts['categoria_google'].dropna().unique().astype(str).tolist())
-                    f_google = st.multiselect("Atividade Específica (Google)", opts_nicho, placeholder="Ex: Cardiologista, Pizzaria...")
+                    st.markdown("##### 2º Passo: Refine o Nicho")
+                    
+                    if not f_macro:
+                        # TRAVA VISUAL: Se não escolheu macro, não vê o resto
+                        st.info("⬅️ Selecione uma **Categoria Geral** ao lado para ver as atividades disponíveis.")
+                        f_google = []
+                    else:
+                        # LIBERAÇÃO: Mostra apenas o que existe dentro da Macro escolhida
+                        df_nicho_opts = df_step1[df_step1['Segmento'].isin(f_macro)]
+                        opts_nicho = sorted(df_nicho_opts['categoria_google'].dropna().unique().astype(str).tolist())
+                        
+                        f_google = st.multiselect(
+                            "Atividade Específica (Google)", 
+                            opts_nicho, 
+                            placeholder=f"Filtrar entre as {len(opts_nicho)} atividades encontradas..."
+                        )
 
             df_step2 = df_step1.copy()
             if f_macro: df_step2 = df_step2[df_step2['Segmento'].isin(f_macro)]
@@ -284,7 +304,6 @@ else:
 
             # --- LOG DE BUSCA VAZIA (CENÁRIO PEDRA) ---
             if total_leads == 0:
-                # Otimização: Só loga se não tiver logado isso nesta sessão ainda (para evitar spam)
                 if 'last_log' not in st.session_state or st.session_state.last_log != f"zero_{len(f_cidade)}_{len(f_macro)}":
                     desc_log = f"Macro: {f_macro} | Google: {f_google} | Cidade: {f_cidade}"
                     salvar_log("busca_vazia", desc_log)
@@ -352,7 +371,6 @@ else:
                         st.write("")
                         if st.button(f"🔓 DESBLOQUEAR LISTA COMPLETA", type="primary", use_container_width=True):
                             
-                            # --- LOG DE CLIQUE NO BOTÃO (CENÁRIO BRONZE) ---
                             desc_log = f"Total: {total_leads} | Filtros: {f_macro} / {f_cidade}"
                             salvar_log("clique_desbloquear", desc_log)
                             
